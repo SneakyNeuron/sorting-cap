@@ -4,13 +4,13 @@ Phases are medium-sized by choice. Each is planned with `/sdd:feature`, built wi
 
 ## Phase 1: Chat shell, tool registry and setup
 Goal: a user can install the app with uv, run a guided `-setup` that gets a local LLM working, and get the app tour, all from the terminal chat.
-- [ ] Migrate to uv (`pyproject.toml`, `uv.lock`, Python 3.12); drop FastAPI/uvicorn; ruff config; CI running ruff and pytest
+- [ ] Scaffold with uv (`pyproject.toml`, `uv.lock`, Python 3.12); `.gitignore` (including `.env`) and `.env.example` for the optional remote-provider key; ruff config; CI running ruff and pytest
 - [ ] Tool registry with Pydantic inputs/outputs, exposed as dash-commands, as agent tools and through the headless runner `sortingcap run <command>`
 - [ ] Terminal chat REPL: dash-commands run tools directly, free text goes to an agent that can call only registered tools; `-help` lists commands
 - [ ] User workspace directory and settings (language cs/en, model, provider)
 - [ ] `-setup`: detect or install/start Ollama (native or Docker), pull and verify the default model, fall back to the optional remote provider; verify the default model name
 - [ ] Prewritten app overview and setup tour per language
-- [ ] `prompts/` tree per language and agent; README updated, `DESIGN.md` retired
+- [ ] `prompts/` tree per language and agent; README updated
 
 ## Phase 2: Profile intake and filter file
 Goal: the user tells the cap about themselves by chat and sources, and gets reviewed profile files plus a `listing_filter_file.md`.
