@@ -43,10 +43,10 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - [x] Tests: each reader on fixtures (including a cp1250 `.txt` and a small PDF); a URL via faked HTTP, including a redirect, an oversize body, a non-HTML type, an error status and a timeout; an unsupported type, an unreadable file and empty extracted text each reported per source without ending the batch; duplicate skipped; a dropped-in file picked up once; a flagged drop-in moved to quarantine and gone from `sources/`; without the classifier, `.html` and URLs are refused while `.txt`/`.pdf` still work; nothing from a flagged source written outside the quarantine
 
 ## Group 6: Profile model, Markdown I/O and `-show-profile`
-- [ ] `app/intake/checklist.py`: item ids, order, must/nice grouping, localized titles and prewritten questions (message keys) (R12)
-- [ ] `app/intake/profile.py`: parse and render `profile.md` with id comments (T7), unknown sections kept verbatim, the CV section rendered from the manifest, missing-item detection, and the merge rule with conflicts (R13)
-- [ ] `-show-profile` tool (agent-callable, headless allowed) (R17)
-- [ ] Tests: render/parse round trip in cs and en; a hand-edited title and body kept; unknown sections kept; a translated title still parsed; merge cases (answer replaces, source fills, conflict listed); CV satisfied by a flagged source; `-show-profile` output in both languages, headless `--json`, and still working when `sources/*/text.md` and `quarantine/` are unreadable (R17); the agent's tool list is exactly `help`, `tour`, `show-profile` (T11)
+- [x] `app/intake/checklist.py`: item ids, order, must/nice grouping, localized titles and prewritten questions (message keys) (R12)
+- [x] `app/intake/profile.py`: parse and render `profile.md` with id comments (T7), unknown sections kept verbatim, the CV section rendered from the manifest, missing-item detection, and the merge rule with conflicts (R13)
+- [x] `-show-profile` tool (agent-callable, headless allowed) (R17)
+- [x] Tests: render/parse round trip in cs and en; a hand-edited title and body kept; unknown sections kept; a translated title still parsed; merge cases (answer replaces, source fills, conflict listed); CV satisfied by a flagged source; `-show-profile` output in both languages, headless `--json`, and still working when `sources/*/text.md` and `quarantine/` are unreadable (R17); the agent's tool list is exactly `help`, `tour`, `show-profile` (T11)
 
 ## Group 7: Extraction and the intake graph
 - [ ] `tests/helpers.py`: a fake chat model that supports `with_structured_output` (returns queued Pydantic objects or raises), alongside the Phase 1 `FakeToolModel`

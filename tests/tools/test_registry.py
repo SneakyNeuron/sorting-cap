@@ -139,7 +139,7 @@ def test_models_are_pydantic_in_app_schemas():
 
 def test_agent_and_chat_only_flags():
     reg = default_registry()
-    assert [t.name for t in reg.agent_tools()] == ["help", "tour"]
+    assert [t.name for t in reg.agent_tools()] == ["help", "tour", "show-profile"]
     assert reg.get("setup").chat_only and not reg.get("setup").agent_callable
     assert not reg.get("settings").agent_callable
 
