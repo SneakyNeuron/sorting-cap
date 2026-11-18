@@ -39,3 +39,10 @@ def test_private_file_creates_or_tightens_and_keeps_content(workspace):
     private_file(path)
     assert path.read_text() == "line\n"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_write_private_bytes(workspace):
+    path = workspace / "blob.bin"
+    write_private(path, b"\x00\xffraw")
+    assert path.read_bytes() == b"\x00\xffraw"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600

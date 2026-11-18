@@ -42,17 +42,21 @@ def check(
     source: str,
     *,
     html: bool = False,
+    text: str | None = None,
     scorer: Scorer | None = None,
 ) -> Verdict:
     """The verdict on one guarded input; flagged input is quarantined first.
 
     `content` is the original text or bytes (bytes are decoded as UTF-8 for scanning
-    and quarantined as they are). `html` splits it into visible and hidden text.
-    `scorer` replaces the installed classifier (tests).
+    and quarantined as they are). `text` is the decoded text to scan instead, for
+    bytes in another encoding (a cp1250 page): the scan then sees exactly what a
+    reader extracts, while the original bytes are quarantined. `html` splits it into
+    visible and hidden text. `scorer` replaces the installed classifier (tests).
     """
     scorer = scorer or ensure_classifier(ctx)
     raw = content if isinstance(content, bytes) else content.encode("utf-8")
-    text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
+    if text is None:
+        text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
     rules = scan(text, html=html)
     score = max(scorer.score(rules.visible), scorer.score(rules.hidden) if rules.hidden else 0.0)
     threshold = ctx.settings.guard_threshold
