@@ -97,3 +97,8 @@
 | Duplicate drop-ins | Left in place (no user file deleted) and left out of the round summary | Deleting user files is surprising; repeating the note every round is noise | implementation (Group 5) |
 | Batch-level source errors | Corrupt manifest or workspace write failure ends the batch; `-add-information` shows a localized error | Without the manifest nothing can be deduplicated; disk failures are not per-source | implementation (Group 5) |
 | Fetch details | 5 MiB cap; per-operation 20 s timeout; any non-2xx is an error; final URL recorded | Simple, testable limits matching httpx semantics | implementation (Group 5) |
+| Unknown section placement | Written back right after the known section they followed; known items stay in R12 order | Keeps hand-added text near its context | implementation (Group 6) |
+| Repeated or unrecognised item id | Section kept verbatim as unknown; the item counts as missing | No text is lost | implementation (Group 6) |
+| CV links | `- [origin](sources/<slug>/)` to the source folder | Rendering stays pure; the original's file name is not in the manifest | implementation (Group 6) |
+| Merge order and missing relation | Updates applied in order against the profile so far, then answers (which settle conflicts on their items); a filled item's update with no relation is a conflict unless equal ignoring whitespace and case; `adds` text already present is not appended again | Never silently loses what the user wrote (R13) | implementation (Group 6) |
+| `-show-profile` errors | Corrupt `manifest.json` → profile still shown with a localized note; unreadable `profile.md` or filter file → localized error, exit 1 headless | The profile stays reviewable when only the manifest is broken | implementation (Group 6) |
