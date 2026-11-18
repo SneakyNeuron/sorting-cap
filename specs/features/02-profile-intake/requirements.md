@@ -78,3 +78,5 @@
 | Workspace file names | Architecture test narrowed to paths under `prompts/`; workspace notes read through `app/texts.py` | `profile.md` and other workspace names are not prompt reads | spec review |
 | Flagged-content wording | Mission and tech stack amended: encrypted quarantine, forwarded only after explicit release | Release (R7) contradicts "never forwarded" otherwise | spec review |
 | Model checksum | Verified once per process | Re-hashing 0.7 GB on every load costs seconds | spec review |
+| Workspace note write failure | Fatal: `ensure_workspace` raises `workspace.note_failed`, the app does not start | The notes are a security measure; starting without them would be silent | implementation (Group 1) |
+| `default_model_factory` location | `app/providers/base.py`, re-exported from `app.agent` | `app/tools/context.py` cannot import `app.agent` without an import cycle | implementation (Group 1) |
