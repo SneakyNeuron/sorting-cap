@@ -1,0 +1,94 @@
+import io
+import json
+
+import pytest
+from helpers import FakeRunner
+
+from app.schemas.base import ToolInput, ToolOutput
+from app.tools import default_registry
+from app.tools.context import ToolError
+from app.tools.headless import run_headless
+from app.tools.registry import Tool
+
+
+class StubInput(ToolInput):
+    action: str = "confirm"
+
+
+class StubOutput(ToolOutput):
+    answer: str
+
+
+def _handler(ctx, inputs):
+    if inputs.action == "confirm":
+        return StubOutput(answer=str(ctx.confirm("ok?")))
+    if inputs.action == "fail":
+        raise ToolError("it broke")
+    if inputs.action == "choose":
+        return StubOutput(answer=ctx.choose("pick?", []))
+    if inputs.action == "text":
+        return StubOutput(answer=ctx.text("name?"))
+    return StubOutput(answer=ctx.secret("key?"))
+
+
+@pytest.fixture
+def registry(lenient_texts):
+    reg = default_registry()
+    reg.register(Tool("stub", StubInput, StubOutput, _handler))
+    reg.register(Tool("chatty", StubInput, StubOutput, _handler, chat_only=True))
+    return reg
+
+
+def run(argv, registry):
+    out, err = io.StringIO(), io.StringIO()
+    code = run_headless(
+        argv,
+        registry=registry,
+        env=None,
+        stdout=out,
+        stderr=err,
+        runner_factory=lambda c: FakeRunner(),
+    )
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_success_and_json_parses_back(registry):
+    code, out, _ = run(["stub", "--json"], registry)
+    assert code == 0
+    assert StubOutput.model_validate(json.loads(out)) == StubOutput(answer="False")
+
+
+def test_confirm_denied_without_yes_and_granted_with(registry):
+    assert json.loads(run(["stub", "--json"], registry)[1])["answer"] == "False"
+    assert json.loads(run(["stub", "--json", "--yes"], registry)[1])["answer"] == "True"
+
+
+@pytest.mark.parametrize("action", ["choose", "text", "secret"])
+def test_inputs_fail_headless(registry, action):
+    code, out, err = run(["stub", "--action", action], registry)
+    assert code == 1
+    assert "?" in err
+
+
+def test_tool_failure_exit_one(registry):
+    code, _, err = run(["stub", "--action", "fail"], registry)
+    assert (code, err.strip()) == (1, "it broke")
+
+
+def test_bad_arguments_exit_two(registry):
+    assert run(["stub", "--nope"], registry)[0] == 2
+    assert run(["nope"], registry)[0] == 2
+    assert run([], registry)[0] == 2
+
+
+def test_chat_only_refused_with_exit_two(registry):
+    assert run(["chatty"], registry)[0] == 2
+    assert run(["chatty", "--yes"], registry)[0] == 2
+
+
+@pytest.mark.parametrize("extra", [[], ["--yes"], ["--json", "--yes"]])
+def test_setup_refused_headless(extra):
+    out, err = io.StringIO(), io.StringIO()
+    code = run_headless(["setup", *extra], stdout=out, stderr=err)
+    assert code == 2
+    assert "-setup" in err.getvalue()

@@ -33,14 +33,14 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - [x] Tests: cs and en contain the same files and the same message keys; loader errors on a missing key or file; every file under `prompts/` is reachable through `app/texts.py`
 
 ## Group 3: Tool registry, generated parser and headless runner
-- [ ] `app/schemas/`: home of the tool input/output Pydantic models
-- [ ] `app/tools/registry.py`: `Tool` definition (name, description key, input/output Pydantic models, `agent_callable`, `chat_only`, handler), `ToolContext` (with `confirm()`, `choose()`, `text()`, `secret()`), and a registry that rejects duplicate names and tools whose message keys are missing in either language
-- [ ] Parser generation: one argparse subparser per tool; fields marked positional become positional arguments, other fields become flags (type, default, required, help from the field's message key in the current language); bool fields become `--flag/--no-flag`; validation errors come from Pydantic and are shown as a short message
-- [ ] `app/tools/headless.py`, `sortingcap run <command> [args] [--json] [--yes]`: runs the tool headless; a `chat_only` tool is refused with a message to use it in chat and exit code 2; renders the output with rich, or prints the output model as JSON with `--json`; exit code 0 on success, 2 on bad arguments, 1 on tool failure or an incomplete run
-- [ ] Non-interactive prompts: in the runner, `ToolContext.confirm()` returns false unless `--yes` was given; `choose()`, `text()` and `secret()` fail the run with a message naming the missing input (exit 1)
-- [ ] `-help` tool (`app/tools/help.py`, agent-callable): lists commands (including REPL built-ins such as `-exit`) with descriptions in the current language; `-help <command>` (positional) shows that command's arguments
-- [ ] `-tour` tool (`app/tools/tour.py`, agent-callable): renders the overview and the tour as Markdown
-- [ ] Tests: registry duplicates and missing keys, argument generation for positional/str/int/bool/enum/optional fields, runner exit codes, `--json` output, `--yes` handling, a `chat_only` stub tool refused by the runner with exit 2, `choose()`/`text()`/`secret()` failing headless, help listing and `-help <command>` in cs and en, `-tour` in cs and en
+- [x] `app/schemas/`: home of the tool input/output Pydantic models
+- [x] `app/tools/registry.py`: `Tool` definition (name, description key, input/output Pydantic models, `agent_callable`, `chat_only`, handler), `ToolContext` (with `confirm()`, `choose()`, `text()`, `secret()`), and a registry that rejects duplicate names and tools whose message keys are missing in either language
+- [x] Parser generation: one argparse subparser per tool; fields marked positional become positional arguments, other fields become flags (type, default, required, help from the field's message key in the current language); bool fields become `--flag/--no-flag`; validation errors come from Pydantic and are shown as a short message
+- [x] `app/tools/headless.py`, `sortingcap run <command> [args] [--json] [--yes]`: runs the tool headless; a `chat_only` tool is refused with a message to use it in chat and exit code 2; renders the output with rich, or prints the output model as JSON with `--json`; exit code 0 on success, 2 on bad arguments, 1 on tool failure or an incomplete run
+- [x] Non-interactive prompts: in the runner, `ToolContext.confirm()` returns false unless `--yes` was given; `choose()`, `text()` and `secret()` fail the run with a message naming the missing input (exit 1)
+- [x] `-help` tool (`app/tools/help.py`, agent-callable): lists commands (including REPL built-ins such as `-exit`) with descriptions in the current language; `-help <command>` (positional) shows that command's arguments
+- [x] `-tour` tool (`app/tools/tour.py`, agent-callable): renders the overview and the tour as Markdown
+- [x] Tests: registry duplicates and missing keys, argument generation for positional/str/int/bool/enum/optional fields, runner exit codes, `--json` output, `--yes` handling, a `chat_only` stub tool refused by the runner with exit 2, `choose()`/`text()`/`secret()` failing headless, help listing and `-help <command>` in cs and en, `-tour` in cs and en
 
 ## Group 4: Workspace and settings
 - [ ] `app/workspace.py`: resolve the workspace (`SORTINGCAP_WORKSPACE` or `~/SortingCap`), create it on first use
