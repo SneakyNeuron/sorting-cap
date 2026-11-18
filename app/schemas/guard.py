@@ -25,6 +25,8 @@ class Verdict(BaseModel):
     matched_rules: list[str] = Field(default_factory=list)
     max_score: float | None = Probability
     reason: str | None = None
+    # the quarantine item a flagged input was stored as (R2: reported with its id)
+    quarantine_id: str | None = None
 
     @property
     def flagged(self) -> bool:
@@ -34,8 +36,8 @@ class Verdict(BaseModel):
     def _consistent(self) -> Verdict:
         if self.status == "flagged" and not (self.reason and self.reason.strip()):
             raise ValueError("a flagged verdict needs a reason")
-        if self.status == "clean" and self.matched_rules:
-            raise ValueError("a clean verdict cannot have matched rules")
+        if self.status == "clean" and (self.matched_rules or self.quarantine_id):
+            raise ValueError("a clean verdict cannot have matched rules or a quarantine id")
         return self
 
 

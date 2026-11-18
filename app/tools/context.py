@@ -170,6 +170,8 @@ class ToolContext:
     settings: Settings = field(init=False)
     # keys typed during `-setup`, used for verification, written to `.env` only after it
     pending_keys: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    # the user declined the classifier download in this command run (R8): offered once
+    classifier_declined: bool = field(default=False, init=False)
     _runner: CommandRunner | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
