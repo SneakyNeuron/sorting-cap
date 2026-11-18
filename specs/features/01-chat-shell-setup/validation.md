@@ -21,12 +21,12 @@
 - [x] V17 (T15): for each of `LANGSMITH_TRACING_V2`, `LANGSMITH_TRACING`, `LANGCHAIN_TRACING_V2` and `LANGCHAIN_TRACING` set to `true` (with `LANGSMITH_GATEWAY` set), a test starts a fresh subprocess, imports the app's entry point, and shows all four are `false`, `LANGSMITH_GATEWAY` is gone and `langsmith.utils.tracing_is_enabled()` is false; another test pins the variable list to the names langsmith reads (`uv run pytest tests/test_cli.py`).
 
 ## Manual (human in the loop)
-- [ ] M1 (R13): the developer reads the README and confirms it covers install, run, `-setup`, the commands, the headless runner (with `setup` chat-only), the workspace (including where `.env` goes) and development.
+- [x] M1 (R13): the developer reads the README and confirms it covers install, run, `-setup`, the commands, the headless runner (with `setup` chat-only), the workspace (including where `.env` goes) and development.
 
 ## Understanding (cognitive debt)
-- [ ] U1: Read `app/tools/registry.py` and the parser generation, and trace how `-help settings` typed in chat and `sortingcap run help settings` both end in the same handler call.
-- [ ] U2: Read the agent's tool wrapping and confirm by its test that a non-agent-callable tool can never reach the agent's tool list.
-- [ ] U3: Read the `-setup` flow and its command runner, and list every command that can run with root rights and the confirmation that guards it.
+- [x] U1: Read `app/tools/registry.py` and the parser generation, and trace how `-help settings` typed in chat and `sortingcap run help settings` both end in the same handler call.
+- [x] U2: Read the agent's tool wrapping and confirm by its test that a non-agent-callable tool can never reach the agent's tool list.
+- [x] U3: Read the `-setup` flow and its command runner, and list every command that can run with root rights and the confirmation that guards it.
 
 ## Definition of done
 All boxes above are ticked, the deep review findings are resolved or consciously accepted, specs match the code, and the roadmap phase is marked complete.
