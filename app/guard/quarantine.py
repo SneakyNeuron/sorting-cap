@@ -6,8 +6,11 @@ files 0600.
 
 The Fernet key is `SORTINGCAP_QUARANTINE_KEY`, read through `app.credentials`
 (environment first, then `<workspace>/.env`). It is generated and written to `.env`
-on the first `create`, never by listing or decrypting. It is not one of
-`credentials.KNOWN_KEYS`, so `-settings` never shows it.
+on a `create` only while no item still holds a `content.enc`, never by listing or
+decrypting. If the key is missing while such items exist, `create` raises
+`QuarantineKeyLost` and writes nothing, so items are never encrypted under two
+different keys. It is not one of `credentials.KNOWN_KEYS`, so `-settings` never
+shows it.
 
 Listing needs no key (reports are plaintext). Decrypting without the key, with a
 wrong key or on a tampered item fails with a clear error and deletes nothing.
@@ -50,6 +53,17 @@ class QuarantineKeyMissing(QuarantineError):
         super().__init__("quarantine.key_missing", name=QUARANTINE_KEY)
 
 
+class QuarantineKeyLost(QuarantineKeyMissing):
+    """The key is missing while encrypted items exist, so new content cannot be
+    quarantined (T5). Callers treat it as fail closed: the flagged input is not
+    stored, not quarantined and not forwarded."""
+
+    def __init__(self, count: int) -> None:
+        QuarantineError.__init__(
+            self, "quarantine.key_lost", name=QUARANTINE_KEY, count=count, dir=QUARANTINE_DIR
+        )
+
+
 def _private_dir(path: Path) -> None:
     path.mkdir(mode=0o700, exist_ok=True)
     path.chmod(0o700)
@@ -74,12 +88,23 @@ class Quarantine:
         if not key:
             if not create:
                 raise QuarantineKeyMissing()
+            if encrypted := self._encrypted_items():
+                raise QuarantineKeyLost(encrypted)
             key = Fernet.generate_key().decode("ascii")
             self._credentials.set(QUARANTINE_KEY, key)
         try:
             return Fernet(key.encode("ascii"))
         except (ValueError, UnicodeEncodeError) as exc:
             raise QuarantineError("quarantine.key_invalid", name=QUARANTINE_KEY) from exc
+
+    def _encrypted_items(self) -> int:
+        """How many item directories still hold a `content.enc`, whatever their report
+        says: each one was encrypted under the existing key."""
+        try:
+            entries = list(self.root.iterdir())
+        except (FileNotFoundError, NotADirectoryError):
+            return 0
+        return sum(1 for e in entries if e.is_dir() and (e / CONTENT_FILE).exists())
 
     # --- items -------------------------------------------------------------
 

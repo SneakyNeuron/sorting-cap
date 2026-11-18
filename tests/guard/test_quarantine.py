@@ -17,6 +17,7 @@ from app.guard.quarantine import (
     QUARANTINE_KEY,
     Quarantine,
     QuarantineError,
+    QuarantineKeyLost,
     QuarantineKeyMissing,
     escape_controls,
 )
@@ -171,6 +172,71 @@ def test_missing_key_with_items_clear_error_and_nothing_deleted(workspace):
     assert QUARANTINE_KEY in exc.value.text(Texts("cs"))
     after = sorted((p, p.read_bytes()) for p in (workspace / QUARANTINE_DIR).rglob("*.*"))
     assert after == before
+
+
+def snapshot(root: Path) -> dict[str, tuple[str, bytes | None, int]]:
+    """Every path under `root` with its kind, bytes (files only) and mode."""
+    out = {}
+    for p in sorted(root.rglob("*")):
+        kind = "file" if p.is_file() else "dir"
+        out[str(p.relative_to(root))] = (kind, p.read_bytes() if kind == "file" else None, mode(p))
+    return out
+
+
+def test_missing_key_with_encrypted_item_refuses_create_nothing_written(workspace):
+    q = store(workspace)
+    q.create(SECRET, "a.txt", matched_rules=["tool_call"])
+    (workspace / ".env").write_text("NOVITA_API_KEY=sk-keep-me\n")
+    before = snapshot(workspace)
+    with pytest.raises(QuarantineKeyLost) as exc:
+        store(workspace).create("new flagged input", "b.txt", matched_rules=["tool_call"])
+    assert isinstance(exc.value, QuarantineKeyMissing)
+    assert isinstance(exc.value, QuarantineError)
+    assert exc.value.key == "quarantine.key_lost"
+    assert snapshot(workspace) == before
+    assert Credentials(workspace, env={}).get(QUARANTINE_KEY) is None
+    assert len(store(workspace).list()) == 1
+
+
+def test_missing_key_error_text_cs_and_en(workspace):
+    store(workspace).create(SECRET, "a.txt", matched_rules=["tool_call"])
+    (workspace / ".env").unlink()
+    with pytest.raises(QuarantineKeyLost) as exc:
+        store(workspace).create("x", "b.txt", matched_rules=["tool_call"])
+    en = exc.value.text(Texts("en"))
+    cs = exc.value.text(Texts("cs"))
+    for text in (en, cs):
+        assert QUARANTINE_KEY in text and ".env" in text and QUARANTINE_DIR in text
+    assert "restore" in en.lower() and "remove" in en.lower()
+    assert "obnov" in cs.lower() and "odstra" in cs.lower()
+    assert en != cs
+
+
+def test_missing_key_with_only_released_items_generates_new_key(workspace):
+    q = store(workspace)
+    old = q.create(SECRET, "a.txt", matched_rules=["tool_call"])
+    q.mark_released(old.id)
+    (workspace / ".env").unlink()
+    fresh = store(workspace)
+    report = fresh.create("next", "b.txt", matched_rules=["tool_call"])
+    assert Credentials(workspace, env={}).get(QUARANTINE_KEY)
+    assert fresh.decrypt(report.id) == b"next"
+
+
+def test_missing_key_with_no_items_generates_new_key(workspace):
+    (workspace / QUARANTINE_DIR).mkdir()
+    (workspace / QUARANTINE_DIR / "stray.txt").write_text("x")
+    report = store(workspace).create("first", "a.txt", matched_rules=["tool_call"])
+    assert Credentials(workspace, env={}).get(QUARANTINE_KEY)
+    assert store(workspace).decrypt(report.id) == b"first"
+
+
+def test_key_in_env_var_with_items_still_creates(workspace):
+    key = Fernet.generate_key().decode()
+    store(workspace, env={QUARANTINE_KEY: key}).create("one", "a.txt", matched_rules=["x"])
+    report = store(workspace, env={QUARANTINE_KEY: key}).create("two", "b.txt", matched_rules=["x"])
+    assert store(workspace, env={QUARANTINE_KEY: key}).decrypt(report.id) == b"two"
+    assert not (workspace / ".env").exists()
 
 
 def test_wrong_key_clear_error_nothing_deleted(workspace):

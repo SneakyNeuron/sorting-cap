@@ -65,6 +65,7 @@
   "quarantine.corrupt": "Položka {id} neodpovídá kontrolnímu součtu ve své zprávě. Nic se nesmazalo.",
   "quarantine.empty": "Karanténa je prázdná.",
   "quarantine.key_invalid": "Klíč karantény {name} není platný klíč. Oprav ho v .env pracovní složky nebo v prostředí; nic se nezměnilo.",
+  "quarantine.key_lost": "Klíč karantény {name} chybí v prostředí i v .env pracovní složky, ale {count} položek v {dir}/ je jím stále zašifrováno, proto byl nový obsah odmítnut: neuložil se, nedal se do karantény a nepředal se dál. Obnov klíč v .env nebo v prostředí, nebo odstraň staré položky z {dir}/; nic se nezapsalo.",
   "quarantine.key_missing": "Klíč karantény {name} chybí v prostředí i v .env pracovní složky, položku nejde dešifrovat. Obnov klíč; nic se nesmazalo.",
   "quarantine.key_wrong": "Položku {id} nejde dešifrovat současným {name}; byla zašifrovaná jiným klíčem, nebo je pozměněná. Nic se nesmazalo.",
   "quarantine.not_found": "Položka karantény {id} neexistuje. Seznam vypíše -show-quarantine.",

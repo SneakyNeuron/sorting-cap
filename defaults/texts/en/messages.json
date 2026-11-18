@@ -65,6 +65,7 @@
   "quarantine.corrupt": "Item {id} does not match its report's checksum. Nothing was deleted.",
   "quarantine.empty": "The quarantine is empty.",
   "quarantine.key_invalid": "The quarantine key {name} is not a valid key. Fix it in the workspace .env or the environment; nothing was changed.",
+  "quarantine.key_lost": "The quarantine key {name} is missing from the environment and from the workspace .env, but {count} quarantined item(s) in {dir}/ are still encrypted with it, so the new content was refused: it was not stored, not quarantined and not passed on. Restore the key in .env or the environment, or remove the old items from {dir}/; nothing was written.",
   "quarantine.key_missing": "The quarantine key {name} is missing from the environment and from the workspace .env, so the item cannot be decrypted. Restore the key; nothing was deleted.",
   "quarantine.key_wrong": "Item {id} cannot be decrypted with the current {name}; it was encrypted with another key or has been altered. Nothing was deleted.",
   "quarantine.not_found": "No quarantine item {id}. -show-quarantine lists them.",
