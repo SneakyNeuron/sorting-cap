@@ -25,7 +25,7 @@
 - Jobs are headless. Scraping, ingestion and letter generation never depend on the chat session; the chat starts a job and shows its result.
 - The chat agent has access only to registered tools, never to a shell or arbitrary file system paths outside the workspace.
 - Prompts live as files in a single `prompts/` directory tree, organised per language (`cs`, `en`) and per agent; no prompt text inline in code. Output schemas live together in one schemas package.
-- LLM calls belong only in the chat agent and in extraction, filtering, research summarisation and letter steps; merging, dedupe, status changes and file layout are plain code.
+- LLM calls belong only in the chat agent, provider verification (`-setup`), and in extraction, filtering, research summarisation and letter steps; merging, dedupe, status changes and file layout are plain code.
 - Letter generation is a LangGraph reflection loop: a seller agent drafts, a sceptical company agent pokes holes, a fact-checker verifies claims of both against the user's and the company's files via the LlamaIndex index; the loop ends on acceptance or an iteration cap.
 - Default letter skills ship with the app and are copied into the user's workspace, where the user edits them by hand or through the chat.
 
@@ -66,5 +66,5 @@
 - Linux first (bash, crontab); macOS best effort.
 
 ## Project structure
-- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas; later graphs, scraping, guard, storage), `prompts/` (per language and agent), `defaults/` (letter skills and prewritten texts shipped to the workspace), `tests/`, `specs/`.
+- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas; later graphs, scraping, guard, storage), `prompts/` (per language and agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
 - No web server or web UI (FastAPI, uvicorn and htmx are out of scope); `specs/` is the design record.

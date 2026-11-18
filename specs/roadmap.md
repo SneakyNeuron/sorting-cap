@@ -9,7 +9,7 @@ Goal: a user can install the app with uv, run a guided `-setup` that gets a loca
 - [ ] Tool registry with Pydantic inputs/outputs, exposed as dash-commands, as agent tools and through the headless runner `sortingcap run <command>`
 - [ ] Terminal chat REPL: dash-commands run tools directly, free text goes to an agent that can call only registered tools; `-help` lists commands
 - [ ] User workspace directory and settings (language cs/en, model, provider)
-- [ ] `-setup`: detect or install/start Ollama (native or Docker), pull and verify the default model, fall back to the optional remote provider; verify the default model name
+- [ ] `-setup`: detect or install/start Ollama (native or Docker), pick and pull a Qwen tier matched to the hardware, verify it; Novita or a custom OpenAI-compatible endpoint as opt-in menu options
 - [ ] Prewritten app overview and setup tour per language
 - [ ] `prompts/` tree per language and agent; README updated
 

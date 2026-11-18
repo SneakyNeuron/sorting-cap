@@ -35,11 +35,11 @@ A guided loop, all in the chat:
 1. Language.
 2. Hardware summary (RAM, NVIDIA VRAM, Docker).
 3. Provider menu:
-   - **Local model (Ollama)** — preselected when your hardware fits. The cap finds a running Ollama, starts a stopped one, or installs it (Docker container bound to `127.0.0.1`, or the official install script). Every command is shown in full and runs only after your explicit yes. You then pick a Qwen model from every tier that fits your hardware (the best one is marked) and it is downloaded with a progress bar.
+   - **Local model (Ollama)** — preselected when your hardware fits. The cap finds a running Ollama, starts a stopped one, or installs it (Docker container bound to `127.0.0.1`, or the official install script; an existing `ollama` container is reused on its published port). Every command is shown in full and runs only after your explicit yes. You then pick a Qwen model from every tier that fits your hardware (the best one is marked) and it is downloaded with a progress bar.
    - **Novita** (remote) — you enter your API key (hidden input) and pick one of Novita's function-calling models.
    - **Custom OpenAI-compatible endpoint** — any URL including its version path, e.g. `http://localhost:1234/v1` for LM Studio, vLLM or llama.cpp; optional key; model name. A `localhost`/`127.x`/`::1` URL counts as local.
 
-   Remote providers are never preselected and always show that your prompts and data leave the machine. If your hardware is too small for any local model, the local option is shown as unavailable and you can use Novita or another provider instead.
+   Remote providers are never preselected and always show that your prompts and data leave the machine. This includes Ollama when `ollama_base_url` points at another host; such a URL that does not answer as Ollama sends you back to the menu, and nothing is installed or started for it. A remote `http://` URL also gets a warning that prompts and any key travel unencrypted. If your hardware is too small for any local model, the local option is shown as unavailable and you can use Novita or another provider instead.
 4. Verification: one chat reply and one tool call. On failure, or if you decline a step, you are back in the menu with the reason. A key typed during `-setup` is written to `<workspace>/.env` only after verification succeeds, so a mistyped key never replaces a working one; when the key's environment variable is set, it wins and `-setup` does not ask for one.
 
 After the first successful setup the app tour is shown once.
@@ -74,7 +74,7 @@ uv run sortingcap run settings --language en --yes
 
 ## Workspace
 
-Everything the cap keeps about you is in plain files in one directory, by default `~/SortingCap`, created readable only by you (mode 0700). Set `SORTINGCAP_WORKSPACE` **in your shell** to move it.
+Everything the cap keeps about you is in plain files in one directory, by default `~/SortingCap`, created readable only by you (mode 0700). An existing directory keeps its mode; if others can access it, the chat warns at start and shows the `chmod 700` command. Set `SORTINGCAP_WORKSPACE` **in your shell** to move it.
 
 | File | Contents |
 |---|---|
@@ -82,6 +82,7 @@ Everything the cap keeps about you is in plain files in one directory, by defaul
 | `.env` | Remote API keys (`NOVITA_API_KEY`, `SORTINGCAP_OPENAI_API_KEY`), mode 0600. Environment variables with the same names win. See `.env.example` — copy it to `<workspace>/.env`, not to the repository |
 | `.history` | Chat input history, mode 0600 (hidden key input is never stored) |
 | `logs/setup.log` | Every command `-setup` ran, with its exit code |
+| `logs/ollama-serve.log` | Output of an `ollama serve` started by `-setup` (it keeps running after the app exits) |
 
 LangSmith tracing is always off.
 
