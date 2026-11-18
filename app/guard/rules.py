@@ -359,6 +359,9 @@ def _join(pieces: list[str]) -> str:
 def extract_html(html: str) -> HtmlText:
     """Visible text of `<body>` and the hidden text, separately (T6).
 
+    Hiding on `<html>` or `<body>` (inline, attributes or `<style>` rules) applies to
+    the whole page.
+
     Hidden: inline `style`, `hidden`, `aria-hidden="true"`, `<noscript>`/`<template>`,
     HTML comments, and simple tag/class/id rules in the page's `<style>` blocks that
     set `display:none`, `visibility:hidden` or a zero font size. External stylesheets,
@@ -366,8 +369,17 @@ def extract_html(html: str) -> HtmlText:
     """
     soup = BeautifulSoup(html, "html.parser")
     collector = _Collector(_style_rules(soup))
-    root = soup.body or soup
-    collector.walk(root, _Style())
+    root = soup.body
+    if root is None:
+        collector.walk(soup, _Style())
+    else:
+        # The walk starts below `<body>`, so the hiding of `<body>` and its ancestors
+        # (`<html>`) is applied up front: it covers the whole page.
+        inherited = _Style()
+        ancestors = [p for p in root.parents if not isinstance(p, BeautifulSoup)]
+        for el in [*reversed(ancestors), root]:
+            inherited = _merge(inherited, collector._own_style(el))
+        collector.walk(root, inherited)
     return HtmlText(_join(collector.visible), _join(collector.hidden))
 
 
