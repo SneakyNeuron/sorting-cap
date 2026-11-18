@@ -180,7 +180,15 @@ def test_completion_candidates(registry):
     def words(text):
         return [c.text for c in completer.get_completions(Document(text), CompleteEvent())]  # noqa: E731
 
-    assert set(words("-")) == {"-help", "-tour", "-settings", "-setup", "-stub", "-exit"}
+    assert set(words("-")) == {
+        "-help",
+        "-tour",
+        "-settings",
+        "-setup",
+        "-show-quarantine",
+        "-stub",
+        "-exit",
+    }
     assert words("-se") == ["-settings", "-setup"]
     assert words("-help to") == ["tour"]
     assert words("hello") == []
