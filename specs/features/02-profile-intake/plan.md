@@ -22,9 +22,9 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - [x] Tests: dependency check; threshold default, validation and `-settings` round trip; notes written on a new workspace, added to an existing one, and an edited note left untouched
 
 ## Group 2: Guard rules
-- [ ] `app/guard/rules.py`: rule set from R3 as data (name, pattern, languages), with case- and diacritics-insensitive matching over normalized text; HTML hidden-text extraction with `beautifulsoup4` (inline style, `hidden`, `aria-hidden`, and class/id rules from the page's own `<style>` blocks, T6) returned separately from visible text; zero-width and bidi control detection
-- [ ] `app/schemas/guard.py`: `Verdict` (clean/flagged, matched rule names, max score, reason) and `QuarantineReport`
-- [ ] Tests: each rule matches its Czech and English samples (with and without diacritics), benign Czech and English job-profile texts and HTML fixtures match nothing, hidden-text extraction on fixtures (inline, attribute and `<style>` class-based hiding), zero-width characters inside a word flagged, ordinary Czech typography (non-breaking spaces, en dashes) not flagged
+- [x] `app/guard/rules.py`: rule set from R3 as data (name, pattern, languages), with case- and diacritics-insensitive matching over normalized text; HTML hidden-text extraction with `beautifulsoup4` (inline style, `hidden`, `aria-hidden`, and class/id rules from the page's own `<style>` blocks, T6) returned separately from visible text; zero-width and bidi control detection
+- [x] `app/schemas/guard.py`: `Verdict` (clean/flagged, matched rule names, max score, reason) and `QuarantineReport`
+- [x] Tests: each rule matches its Czech and English samples (with and without diacritics), benign Czech and English job-profile texts and HTML fixtures match nothing, hidden-text extraction on fixtures (inline, attribute and `<style>` class-based hiding), zero-width characters inside a word flagged, ordinary Czech typography (non-breaking spaces, en dashes) not flagged
 
 ## Group 3: Quarantine store and encryption
 - [ ] `app/guard/quarantine.py`: create an item (id, `content.enc` via Fernet, `report.json`; 0700 dir, 0600 files), list, decrypt to memory, mark released and delete `content.enc`; key generated on first use and stored as `SORTINGCAP_QUARANTINE_KEY` through `app/credentials.py` (T5)
