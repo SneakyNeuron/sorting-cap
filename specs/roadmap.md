@@ -14,6 +14,7 @@ Goal: a user can install the app with uv, run a guided `-setup` that gets a loca
 - [x] `prompts/` tree per language and agent; README updated
 
 ## Phase 2: Profile intake and filter file
+Spec: specs/features/02-profile-intake/
 Goal: the user tells the cap about themselves by chat and sources, and gets reviewed profile files plus a `listing_filter_file.md`.
 - [ ] Prompt-injection guard: local classifier + rules, quarantine directory, report to user; used by every later phase for web input
 - [ ] `-add-information`: chat dialog and sources (.txt, .pdf, .html, URL) ingested via LlamaIndex, web sources through the guard
