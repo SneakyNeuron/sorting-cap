@@ -1,0 +1,17 @@
+{
+  "data": [
+    {"id": "deepseek/deepseek-v3.2", "object": "model", "created": 1764000000, "owned_by": "unknown",
+     "title": "deepseek/deepseek-v3.2", "description": "", "context_size": 163840,
+     "input_token_price_per_m": 2690, "output_token_price_per_m": 4000, "model_type": "chat",
+     "max_output_tokens": 65536, "features": ["serverless", "function-calling", "reasoning", "structured-outputs"],
+     "input_modalities": ["text"], "output_modalities": ["text"], "status": 1},
+    {"id": "qwen/qwen3-235b-a22b-instruct-2507", "object": "model", "created": 1753000000, "owned_by": "unknown",
+     "title": "qwen/qwen3-235b-a22b-instruct-2507", "description": "", "context_size": 262144,
+     "model_type": "chat", "features": ["serverless", "function-calling", "structured-outputs"], "status": 1},
+    {"id": "sao10k/l3-8b-lunaris", "object": "model", "created": 1720000000, "owned_by": "unknown",
+     "title": "sao10k/l3-8b-lunaris", "description": "", "context_size": 8192, "model_type": "chat",
+     "features": ["serverless"], "status": 1},
+    {"id": "baai/bge-m3", "object": "model", "created": 1710000000, "owned_by": "unknown",
+     "title": "baai/bge-m3", "model_type": "embedding", "features": [], "status": 1}
+  ]
+}

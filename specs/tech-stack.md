@@ -10,22 +10,22 @@
 | Agents & orchestration | LangGraph on LangChain | Stateful graphs for intake, scraping pipeline and the reflection loop; LangChain tool and model abstractions. |
 | Document ingestion & retrieval | LlamaIndex | Loading .txt/.pdf/.html/web sources and the local index the fact-checker queries. |
 | Schemas | Pydantic v2 | Every structured LLM output, every tool input/output and every stored record is a Pydantic model. |
-| LLM access | LangChain chat models (Ollama and OpenAI-compatible integrations), built from the user's settings | One abstraction for chat, tools and LangGraph; the provider is a setting, not code. No separate in-house LLM port. |
-| Local LLM | Ollama | Default runtime, installed or started by `-setup` (native or via Docker). Default chat model: Qwen family (the "qwen4" default named by the developer is to be verified against Ollama's catalog in phase 1). |
+| LLM access | LangChain chat models (`ChatOllama`; `ChatDeepSeek` from `langchain-deepseek` for OpenAI-compatible endpoints, because `ChatOpenAI` drops reasoning output), built from the user's settings | One abstraction for chat, tools and LangGraph; the provider is a setting, not code. No separate in-house LLM port. |
+| Local LLM | Ollama | Default runtime, installed or started by `-setup` (native or via Docker). Chat model: a Qwen-family tier chosen at setup from the recommended list for the detected hardware (no "qwen4" exists in Ollama's library as of 2026-11; tiers are kept in the phase 1 spec). |
 | Relevance filter model | Dedicated local filter model, configurable | Developer's reference is `jaredpalmer/kev-27b` on Hugging Face; existence, licence and Ollama availability are to be verified in phase 3, with a fallback to the default chat model. |
 | Prompt-injection guard | Local classifier model + rule checks | A small local injection classifier (candidates: Llama Prompt Guard 2, ProtectAI deberta prompt-injection; chosen and verified in phase 2) plus deterministic rules. |
 | Scraping | httpx (thread pool) + readability-style extraction (e.g. trafilatura), Playwright headless Chromium as per-site fallback | Fast for server-rendered pages, still works on JavaScript-rendered boards. Playwright is installed only when a site needs it. |
 | Chat interface | Terminal chat REPL | Dash-commands (`-setup`, `-add-information`, `-scrape-jobs`, …) run tools deterministically; free text goes to the agent. |
 | Scheduling | User crontab | `-set-crontab` installs entries that call the headless runner. |
 | Containers | Docker / Docker Compose | Optional way to run Ollama and auxiliary services; the app itself runs via uv. |
-| Remote LLM (optional) | Novita via OpenAI-compatible API | Opt-in provider through the OpenAI-compatible LangChain chat model; never the default. |
+| Remote LLM (optional) | Novita, or any OpenAI-compatible endpoint the user configures | Opt-in providers through the OpenAI-compatible LangChain chat model; the user picks the model; never the default. |
 
 ## Architecture
-- One tool registry. Every capability (setup, add-information, add-web-links, scrape-jobs, list-unresolved, list-accepted, list-rejected, approve, reject, set-crontab, …) is a typed tool with Pydantic input and output. It is exposed three ways: as a dash-command in chat, as a tool the chat agent may call, and through a headless runner (`sortingcap run <command>`) used by cron.
+- One tool registry. Every capability (setup, add-information, add-web-links, scrape-jobs, list-unresolved, list-accepted, list-rejected, approve, reject, set-crontab, …) is a typed tool with Pydantic input and output. It is exposed three ways: as a dash-command in chat, as a tool the chat agent may call, and through a headless runner (`sortingcap run <command>`) used by cron. Interactive tools that need user choices (`setup`) are chat-only and refused by the runner.
 - Jobs are headless. Scraping, ingestion and letter generation never depend on the chat session; the chat starts a job and shows its result.
 - The chat agent has access only to registered tools, never to a shell or arbitrary file system paths outside the workspace.
 - Prompts live as files in a single `prompts/` directory tree, organised per language (`cs`, `en`) and per agent; no prompt text inline in code. Output schemas live together in one schemas package.
-- LLM calls belong only in extraction, filtering, research summarisation and letter steps; merging, dedupe, status changes and file layout are plain code.
+- LLM calls belong only in the chat agent, provider verification (`-setup`), and in extraction, filtering, research summarisation and letter steps; merging, dedupe, status changes and file layout are plain code.
 - Letter generation is a LangGraph reflection loop: a seller agent drafts, a sceptical company agent pokes holes, a fact-checker verifies claims of both against the user's and the company's files via the LlamaIndex index; the loop ends on acceptance or an iteration cap.
 - Default letter skills ship with the app and are copied into the user's workspace, where the user edits them by hand or through the chat.
 
@@ -66,5 +66,5 @@
 - Linux first (bash, crontab); macOS best effort.
 
 ## Project structure
-- Top level: `app/` (tools registry, chat, runner, graphs, scraping, guard, storage, schemas, llm settings), `prompts/` (per language and agent), `defaults/` (letter skills and prewritten texts shipped to the workspace), `tests/`, `specs/`.
+- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas; later graphs, scraping, guard, storage), `prompts/` (per language and agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
 - No web server or web UI (FastAPI, uvicorn and htmx are out of scope); `specs/` is the design record.

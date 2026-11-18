@@ -1,0 +1,47 @@
+[project]
+name = "sortingcap"
+version = "0.1.0"
+description = "Czech-oriented, local job-hunting harness in the terminal."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "langchain>=1,<2",
+    "langchain-deepseek>=1.2.0",
+    "langchain-ollama>=1.1.0",
+    "prompt-toolkit>=3,<4",
+    "pydantic>=2,<3",
+    "rich>=15.0.0",
+]
+
+[project.scripts]
+sortingcap = "app.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "app"
+module-root = ""
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = "--import-mode=importlib --disable-socket --allow-unix-socket"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-socket>=0.8.1",
+    "respx>=0.23.1",
+    "ruff>=0.17.5",
+]

@@ -1,0 +1,1 @@
+Odpověz jedním slovem: připraven.
