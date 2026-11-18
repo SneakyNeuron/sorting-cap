@@ -101,9 +101,12 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - [x] Tests (faked HTTP; the Novita `/v1/models` fixture copies the live response shape, including the `features` list with `serverless`, `function-calling`, `reasoning`, `structured-outputs`): Novita model list filtered to function-calling models and the user's pick saved; custom endpoint URL validation, optional key, model saved, loopback hosts skip the notice and LAN hosts do not; keys absent from `.history`; keys stored with 0600 and never in `settings.json`, logs or output; env var precedence; verification pass/fail for both; declining the data notice returns to the menu
 
 ## Group 11: README and spec sync
-- [ ] README: requirements (Linux, uv, optional Docker), install (`git clone`, `uv sync`), run (`uv run sortingcap`), `-setup` and its provider menu, command list, headless runner (and that `setup` is chat-only), workspace location and files, where `.env` goes (`<workspace>/.env`, with `SORTINGCAP_WORKSPACE` set in the shell), development (ruff, pytest)
-- [ ] Specs match the code: update `tech-stack.md` "Project structure" if the layout differs, and record any decision changes in `requirements.md`
-- [ ] Tests: full offline suite and ruff clean
+- [x] README: requirements (Linux, uv, optional Docker), install (`git clone`, `uv sync`), run (`uv run sortingcap`), `-setup` and its provider menu, command list, headless runner (and that `setup` is chat-only), workspace location and files, where `.env` goes (`<workspace>/.env`, with `SORTINGCAP_WORKSPACE` set in the shell), development (ruff, pytest)
+- [x] Specs match the code: update `tech-stack.md` "Project structure" if the layout differs, and record any decision changes in `requirements.md`
+- [x] Tests: full offline suite and ruff clean
+
+## Implementation notes
+Modules added beyond the groups above, all within their groups' scope: `app/providers/hosts.py` (the loopback helper), `app/providers/builtin.py` (registers the three providers, menu order), `app/providers/verify.py` (shared chat-reply plus tool-call verification through `create_agent`), `app/providers/openai_api.py` (the `ChatDeepSeek` builder shared by `novita` and `openai_compatible`), `app/providers/ollama/pull.py` and `app/providers/ollama/provider.py`, `app/tools/context.py` (`ToolContext`, prompters, `ToolError`) and `app/schemas/base.py`. Test doubles live in `tests/helpers.py` (pytest `pythonpath = ["tests"]`). The interactive choice prompt shows the default number and takes an empty answer as the default (no pre-filled text). openai 3.x uses `httpx2`, so `ChatDeepSeek` HTTP is faked by passing an `httpx2.Client` with a mock transport; respx is unused so far.
 
 ## Edge cases
 - `settings.json` hand-edited into invalid JSON or an invalid value → the command fails with a message naming the file and field; nothing is overwritten.
