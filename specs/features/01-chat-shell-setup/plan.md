@@ -27,10 +27,10 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - [x] Tests: `sortingcap --version` prints the package version and exits 0 (`tests/test_cli.py`); `app/paths.py` finds both directories (`tests/test_paths.py`); `tests/test_project.py` checks `uv.lock` against the T1 ranges, the `uv_build` backend and the absence of `python-dotenv`
 
 ## Group 2: Texts, prompts and message catalog
-- [ ] `app/texts.py`: loaders for prompts (`prompts/<lang>/<agent>/*.md`), prewritten texts and messages (`defaults/texts/<lang>/messages.json`) by language; a missing key or file fails loudly; the only module that reads `prompts/`
-- [ ] `prompts/cs/chat/system.md` and `prompts/en/chat/system.md` (the cap's voice: short, dry, a bit hat-like; may call only the listed tools; points the user to `-setup` for setup and to `-help`)
-- [ ] `defaults/texts/{cs,en}/overview.md`, `tour.md` and `messages.json` (UI strings plus tool and flag help keys, filled as tools are added in later groups)
-- [ ] Tests: cs and en contain the same files and the same message keys; loader errors on a missing key or file; every file under `prompts/` is reachable through `app/texts.py`
+- [x] `app/texts.py`: loaders for prompts (`prompts/<lang>/<agent>/*.md`), prewritten texts and messages (`defaults/texts/<lang>/messages.json`) by language; a missing key or file fails loudly; the only module that reads `prompts/`
+- [x] `prompts/cs/chat/system.md` and `prompts/en/chat/system.md` (the cap's voice: short, dry, a bit hat-like; may call only the listed tools; points the user to `-setup` for setup and to `-help`)
+- [x] `defaults/texts/{cs,en}/overview.md`, `tour.md` and `messages.json` (UI strings plus tool and flag help keys, filled as tools are added in later groups)
+- [x] Tests: cs and en contain the same files and the same message keys; loader errors on a missing key or file; every file under `prompts/` is reachable through `app/texts.py`
 
 ## Group 3: Tool registry, generated parser and headless runner
 - [ ] `app/schemas/`: home of the tool input/output Pydantic models
