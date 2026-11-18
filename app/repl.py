@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -17,10 +16,11 @@ from rich.markdown import Markdown
 from app.agent import ChatAgent, ModelFactory, NoModelConfigured, default_model_factory
 from app.credentials import Credentials
 from app.errors import UserFacingError
-from app.providers.verify import short_error
+from app.files import private_file
+from app.messages import short_error
 from app.settings import Settings, SettingsError, load_settings, save_settings, settings_exist
-from app.texts import Texts
-from app.tools.context import Choice, InteractivePrompter, ToolContext
+from app.texts import DEFAULT_LANGUAGE, Texts
+from app.tools.context import InteractivePrompter, ToolContext, language_choices
 from app.tools.registry import Registry, parse_command, split_chat_line
 from app.workspace import WorkspaceError, ensure_workspace, workspace_is_private
 
@@ -52,13 +52,6 @@ class DashCompleter(Completer):
             candidate = prefix + name
             if candidate.startswith(word):
                 yield Completion(candidate, start_position=-len(word))
-
-
-def private_file(path: Path) -> Path:
-    """Create `path` if missing and make it readable only by the user (0600)."""
-    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
-    path.chmod(0o600)
-    return path
 
 
 class Repl:
@@ -105,7 +98,6 @@ class Repl:
             console=self.console,
             registry=self.registry,
             env=self.env,
-            interactive=True,
             **self.ctx_kwargs,
         )
         ctx.prompter = InteractivePrompter(self.console, lambda: ctx.texts)
@@ -137,8 +129,8 @@ class Repl:
             try:
                 language = prompter.choose(
                     texts.message("setup.language_question"),
-                    [Choice("cs", "Čeština"), Choice("en", "English")],
-                    default="cs",
+                    language_choices(),
+                    default=DEFAULT_LANGUAGE,
                 )
             except KeyboardInterrupt:
                 continue

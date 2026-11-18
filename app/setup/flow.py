@@ -16,7 +16,7 @@ from app.providers.remote import save_pending_keys
 from app.schemas.setup import SetupInput, SetupOutput
 from app.settings import Settings
 from app.setup.hardware import Hardware, detect
-from app.tools.context import Choice, ToolContext
+from app.tools.context import Choice, ToolContext, language_choices
 from app.tools.registry import Tool
 
 QUIT = "quit"
@@ -26,14 +26,15 @@ def detect_hardware(ctx: ToolContext) -> Hardware:
     return detect(ctx.runner)
 
 
-def available_providers() -> list[Provider]:
+def menu_providers() -> list[Provider]:
+    """Every registered provider, in menu order; unavailable ones are shown disabled."""
     return providers()
 
 
 def _choose_language(ctx: ToolContext) -> None:
     language = ctx.choose(
         ctx.msg("setup.language_question"),
-        [Choice("cs", "Čeština"), Choice("en", "English")],
+        language_choices(),
         default=ctx.settings.language,
     )
     ctx.save_settings(ctx.settings.model_copy(update={"language": language}))
@@ -57,12 +58,12 @@ def _hardware_summary(ctx: ToolContext, hw: Hardware) -> None:
 def _menu(ctx: ToolContext, hw: Hardware) -> tuple[list[Choice], str | None]:
     choices: list[Choice] = []
     default: str | None = None
-    for provider in available_providers():
+    for provider in menu_providers():
         availability = provider.availability(hw)
         label = ctx.msg(provider.label_key)
         if availability.available:
             choices.append(Choice(provider.name, label))
-            if default is None and getattr(provider, "preselectable", False):
+            if default is None and provider.preselectable:
                 default = provider.name
         else:
             reason = ctx.msg(availability.reason_key or "setup.unavailable")
@@ -103,7 +104,7 @@ def _run(ctx: ToolContext) -> SetupOutput:
         pick = ctx.choose(ctx.msg("setup.menu_question"), choices, default=default)
         if pick == QUIT:
             return SetupOutput(completed=False)
-        provider = next(p for p in available_providers() if p.name == pick)
+        provider = next(p for p in menu_providers() if p.name == pick)
         ctx.pending_keys.clear()
         try:
             result = provider.run_setup(ctx, hw)

@@ -8,11 +8,16 @@ from __future__ import annotations
 import json
 from functools import cache
 from pathlib import Path
+from typing import Literal, get_args
 
 from app.paths import PROMPTS_DIR, TEXTS_DIR
 
-LANGUAGES = ("cs", "en")
-DEFAULT_LANGUAGE = "cs"
+# The one definition of the supported languages; `Settings` and tool inputs use `Language`.
+Language = Literal["cs", "en"]
+LANGUAGES: tuple[str, ...] = get_args(Language)
+DEFAULT_LANGUAGE: Language = "cs"
+# Each language's own name (endonym), the same in every UI language.
+LANGUAGE_NAMES: dict[str, str] = {"cs": "Čeština", "en": "English"}
 
 
 class TextsError(Exception):

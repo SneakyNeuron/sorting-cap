@@ -60,7 +60,7 @@ def test_loose_existing_env_never_holds_key_with_old_mode(workspace, monkeypatch
         seen.append(stat.S_IMODE(os.stat(src).st_mode))
         real_replace(src, dst)
 
-    monkeypatch.setattr("app.credentials.os.replace", spy)
+    monkeypatch.setattr("app.files.os.replace", spy)
     Credentials(workspace, env={}).set(NOVITA_KEY, "sk-secret-key-1")
     assert seen == [0o600]
     assert stat.S_IMODE(path.stat().st_mode) == 0o600

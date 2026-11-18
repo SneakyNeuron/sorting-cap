@@ -38,7 +38,6 @@ TIERS: tuple[Tier, ...] = (
     Tier(8, "qwen3.5:4b-q4_K_M", "Qwen3.5, 4.7B dense", 3.3, 5, 8),
     Tier(9, "qwen3.5:2b-q4_K_M", "Qwen3.5, 2.3B dense", 1.9, 3, 6),
 )
-FLOOR_TIER = 9
 
 
 def fitting_tiers(hw: Hardware) -> list[Tier]:
@@ -53,7 +52,3 @@ def preselected_tier(hw: Hardware) -> Tier | None:
         return gpu[0]
     ram = [t for t in TIERS if t.fits_ram(hw.ram_gb)]
     return ram[0] if ram else None
-
-
-def tier_by_tag(tag: str) -> Tier | None:
-    return next((t for t in TIERS if t.tag == tag), None)

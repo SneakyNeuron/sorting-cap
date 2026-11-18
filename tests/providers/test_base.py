@@ -1,6 +1,16 @@
 import pytest
+from helpers import ScriptedPrompter, fake_model, make_ctx, tool_call
 
-from app.providers.base import get_provider, provider_names
+from app.credentials import NOVITA_KEY
+from app.providers.base import (
+    Availability,
+    Provider,
+    SetupAborted,
+    SetupResult,
+    choose_or_back,
+    get_provider,
+    provider_names,
+)
 from app.providers.hosts import is_loopback_url
 from app.settings import Settings
 
@@ -46,3 +56,59 @@ def test_is_remote_per_provider():
 def test_ollama_remote_unless_loopback():
     assert not Settings(provider="ollama", ollama_base_url="http://[::1]:11434").is_remote()
     assert Settings(provider="ollama", ollama_base_url="http://203.0.113.5:11434").is_remote()
+
+
+def test_only_local_ollama_is_preselectable():
+    assert Provider.preselectable is False
+    assert {n: get_provider(n).preselectable for n in provider_names()} == {
+        "ollama": True,
+        "novita": False,
+        "openai_compatible": False,
+    }
+
+
+class MinimalProvider(Provider):
+    """Implements only the abstract methods: `verify` is the shared default."""
+
+    name = "minimal"
+    label_key = "provider.novita.label"
+    key_name = NOVITA_KEY
+
+    def __init__(self):
+        self.seen_keys = []
+
+    def is_remote(self, settings):
+        return True
+
+    def availability(self, hardware):
+        return Availability(True)
+
+    def run_setup(self, ctx, hardware):
+        return SetupResult(model="m")
+
+    def chat_model(self, settings, credentials, http_client=None):
+        self.seen_keys.append(credentials.get(NOVITA_KEY))
+        return fake_model("ok", tool_call("ping", {"value": 7}), "done")
+
+
+def test_default_verify_uses_pending_keys(workspace):
+    ctx, _ = make_ctx(workspace)
+    ctx.pending_keys[NOVITA_KEY] = "typed-not-saved-1"
+    provider = MinimalProvider()
+    provider.verify(ctx, Settings(provider="novita", model="m"))
+    assert provider.seen_keys == ["typed-not-saved-1"]
+    assert not (workspace / ".env").exists()
+
+
+def test_choose_or_back(workspace):
+    from app.tools.context import BACK, Choice
+
+    prompter = ScriptedPrompter("a", BACK)
+    ctx, _ = make_ctx(workspace, prompter)
+    assert choose_or_back(ctx, "q", [Choice("a", "A")], default="a") == "a"
+    call = prompter.choose_calls()[0]
+    assert [c.value for c in call["choices"]] == ["a", BACK]
+    assert call["default"] == "a"
+    with pytest.raises(SetupAborted) as exc:
+        choose_or_back(ctx, "q", [Choice("a", "A")])
+    assert exc.value.message == ctx.msg("setup.declined")

@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from app.providers.base import SetupAborted
+from app.providers.base import SetupAborted, choose_or_back
 from app.providers.hosts import is_loopback_url
 from app.setup.hardware import Hardware, is_docker_permission_error
 from app.tools.context import Choice, ToolContext
@@ -215,7 +215,13 @@ class OllamaServer:
         return SetupAborted(ctx.msg("ollama.command_failed", detail=stderr.strip()[:300] or "?"))
 
     def start_binary(self, systemd: bool, base_url: str) -> str:
-        if systemd:
+        """Start an installed Ollama where `base_url` points.
+
+        The systemd unit listens where its own `OLLAMA_HOST` says (11434 by
+        default), so it is used only for the default port; any other port gets
+        `ollama serve` with `OLLAMA_HOST` from `base_url`.
+        """
+        if systemd and self._port_of(base_url) == DEFAULT_PORT:
             cmd = ["sudo", "systemctl", "start", "ollama"]
             self._confirm_command(shlex.join(cmd))
             result = self.ctx.runner.run(cmd, mode="interactive", timeout=120)
@@ -319,11 +325,8 @@ class OllamaServer:
         choices = [Choice("native", ctx.msg("ollama.route_native"))]
         if hw.docker:
             choices.insert(0, Choice("docker", ctx.msg("ollama.route_docker")))
-        choices.append(Choice("back", ctx.msg("setup.back")))
         default = "docker" if hw.docker and hw.docker_usable else "native"
-        route = ctx.choose(ctx.msg("ollama.route_question"), choices, default=default)
-        if route == "back":
-            raise SetupAborted(ctx.msg("setup.declined"))
+        route = choose_or_back(ctx, ctx.msg("ollama.route_question"), choices, default=default)
         if route == "docker":
             return self.install_docker(hw, self._port_of(base_url))
         return self.install_native(base_url)

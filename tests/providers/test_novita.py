@@ -41,6 +41,24 @@ def test_setup_lists_models_and_saves_pick(workspace):
     assert "nv-key-abcdef" not in buf.getvalue()
 
 
+def test_model_named_back_is_a_model_not_the_back_choice(workspace):
+    payload = {"data": [{"id": "back", "features": ["function-calling"]}]}
+    prompter = ScriptedPrompter(True, "k" * 12, "back")
+    ctx, _ = make_ctx(workspace, prompter, handler=lambda r: httpx.Response(200, json=payload))
+    assert NovitaProvider().run_setup(ctx, hardware()).model == "back"
+    values = [c.value for c in prompter.choose_calls()[0]["choices"]]
+    assert len(values) == len(set(values)) == 3
+
+
+def test_back_choice_aborts(workspace):
+    from app.tools.context import BACK
+
+    prompter = ScriptedPrompter(True, "k" * 12, BACK)
+    ctx, _ = make_ctx(workspace, prompter, handler=models_http([]))
+    with pytest.raises(SetupAborted):
+        NovitaProvider().run_setup(ctx, hardware())
+
+
 def test_type_an_id(workspace):
     prompter = ScriptedPrompter(True, "k" * 12, TYPE_ID, "custom/model")
     ctx, _ = make_ctx(workspace, prompter, handler=models_http([]))

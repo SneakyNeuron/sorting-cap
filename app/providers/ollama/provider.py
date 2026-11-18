@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.providers.base import Availability, Provider, SetupAborted, SetupResult
+from app.providers.base import Availability, Provider, SetupResult, choose_or_back
 from app.providers.hosts import is_loopback_url
 from app.providers.ollama.pull import pull_model
 from app.providers.ollama.server import OllamaServer
 from app.providers.ollama.tiers import fitting_tiers, preselected_tier
 from app.providers.remote import require_data_notice
-from app.providers.verify import verify_chat_model
 from app.tools.context import Choice
 
 
@@ -30,10 +29,9 @@ class OllamaProvider(Provider):
         return settings.ollama_base_url
 
     def availability(self, hardware) -> Availability:
-        tiers = fitting_tiers(hardware)
-        if not tiers:
+        if not fitting_tiers(hardware):
             return Availability(False, reason_key="ollama.no_fit")
-        return Availability(True, detail=tiers)
+        return Availability(True)
 
     def choose_tier(self, ctx, hardware) -> str:
         best = preselected_tier(hardware)
@@ -51,13 +49,9 @@ class OllamaProvider(Provider):
             )
             for t in fitting_tiers(hardware)
         ]
-        choices.append(Choice("back", ctx.msg("setup.back")))
-        pick = ctx.choose(
-            ctx.msg("ollama.tier_question"), choices, default=best.tag if best else None
+        return choose_or_back(
+            ctx, ctx.msg("ollama.tier_question"), choices, default=best.tag if best else None
         )
-        if pick == "back":
-            raise SetupAborted(ctx.msg("setup.declined"))
-        return pick
 
     def run_setup(self, ctx, hardware) -> SetupResult:
         if not is_loopback_url(ctx.settings.ollama_base_url):
@@ -67,10 +61,8 @@ class OllamaProvider(Provider):
         pull_model(ctx, base_url, tag)
         return SetupResult(model=tag, updates={"ollama_base_url": base_url})
 
-    def verify(self, ctx, settings) -> None:
-        verify_chat_model(ctx, self.chat_model(settings, ctx.credentials), ctx.msg(self.label_key))
-
-    def chat_model(self, settings, credentials):
+    def chat_model(self, settings, credentials, http_client=None):
+        """`ChatOllama` takes no HTTP client object, so `http_client` is ignored."""
         from langchain_ollama import ChatOllama
 
         return ChatOllama(model=settings.model, base_url=settings.ollama_base_url, reasoning=True)

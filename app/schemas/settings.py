@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import Field
 
 from app.schemas.base import ToolInput, ToolOutput
+from app.texts import Language
 
 
 class SettingsInput(ToolInput):
-    language: Literal["cs", "en"] | None = None
+    language: Language | None = None
     provider: str | None = None
     model: str | None = None
     ollama_base_url: str | None = None

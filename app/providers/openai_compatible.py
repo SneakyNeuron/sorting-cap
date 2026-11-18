@@ -11,7 +11,6 @@ from app.providers.base import Availability, Provider, SetupResult
 from app.providers.hosts import host_of, is_http_url, is_loopback_url
 from app.providers.openai_api import openai_compatible_model
 from app.providers.remote import ask_key, require_data_notice
-from app.providers.verify import verify_chat_model
 
 
 def validate_base_url(url: str) -> bool:
@@ -53,9 +52,6 @@ class OpenAICompatibleProvider(Provider):
             validate=lambda v: None if v else ctx.msg("openai.model_required"),
         )
         return SetupResult(model=model, updates={"openai_base_url": url})
-
-    def verify(self, ctx, settings) -> None:
-        verify_chat_model(ctx, self.chat_model(settings, ctx.credentials), ctx.msg(self.label_key))
 
     def chat_model(self, settings, credentials, http_client=None):
         return openai_compatible_model(

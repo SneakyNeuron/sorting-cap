@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from app.credentials import Credentials
 from app.errors import UserFacingError
+from app.messages import message_text
 from app.providers.base import get_provider
-from app.providers.verify import message_text
 from app.settings import Settings
 from app.texts import Texts
 from app.tools.context import ToolContext
@@ -94,6 +94,8 @@ class ChatAgent:
         self.history: list[Any] = []
         self._agent = None
         self._key: tuple | None = None
+        # Introspection only (how often the agent was rebuilt, which tools it got);
+        # nothing in the app reads them, tests do.
         self.builds = 0
         self.tool_names: list[str] = []
 

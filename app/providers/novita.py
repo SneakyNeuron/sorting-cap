@@ -5,14 +5,13 @@ from __future__ import annotations
 import httpx
 
 from app.credentials import NOVITA_KEY
-from app.providers.base import Availability, Provider, SetupAborted, SetupResult
+from app.providers.base import Availability, Provider, SetupResult, choose_or_back
 from app.providers.openai_api import openai_compatible_model
 from app.providers.remote import ask_key, require_data_notice
-from app.providers.verify import verify_chat_model
 from app.tools.context import Choice
 
 NOVITA_BASE_URL = "https://api.novita.ai/openai/v1"
-TYPE_ID = "__type__"
+TYPE_ID = "\x00type"  # NUL: never part of a model id (see `BACK`)
 
 
 def function_calling_models(payload: dict) -> list[str]:
@@ -53,13 +52,8 @@ class NovitaProvider(Provider):
         models = self.fetch_models(ctx, key)
         if models:
             choices = [Choice(m, m) for m in models]
-            choices += [
-                Choice(TYPE_ID, ctx.msg("novita.type_id")),
-                Choice("back", ctx.msg("setup.back")),
-            ]
-            pick = ctx.choose(ctx.msg("novita.model_question"), choices, default=None)
-            if pick == "back":
-                raise SetupAborted(ctx.msg("setup.declined"))
+            choices.append(Choice(TYPE_ID, ctx.msg("novita.type_id")))
+            pick = choose_or_back(ctx, ctx.msg("novita.model_question"), choices)
         else:
             ctx.say("novita.list_failed", style="yellow")
             pick = TYPE_ID
@@ -69,9 +63,6 @@ class NovitaProvider(Provider):
                 validate=lambda v: None if v else ctx.msg("novita.model_required"),
             )
         return SetupResult(model=pick)
-
-    def verify(self, ctx, settings) -> None:
-        verify_chat_model(ctx, self.chat_model(settings, ctx.credentials), ctx.msg(self.label_key))
 
     def chat_model(self, settings, credentials, http_client=None):
         return openai_compatible_model(

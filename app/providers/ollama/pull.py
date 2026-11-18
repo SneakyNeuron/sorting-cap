@@ -1,4 +1,7 @@
-"""Installed models (`GET /api/tags`) and streamed pulls (`POST /api/pull`)."""
+"""Installed models (`GET /api/tags`) and streamed pulls (`POST /api/pull`).
+
+Ollama API reference: https://docs.ollama.com/api
+"""
 
 from __future__ import annotations
 

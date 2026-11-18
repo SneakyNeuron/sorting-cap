@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from app.credentials import Credentials
     from app.settings import Settings
     from app.setup.hardware import Hardware
-    from app.tools.context import ToolContext
+    from app.tools.context import Choice, ToolContext
 
 
 class SetupAborted(UserFacingError):
@@ -33,7 +33,6 @@ class SetupAborted(UserFacingError):
 class Availability:
     available: bool
     reason_key: str | None = None
-    detail: Any = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +47,8 @@ class Provider(ABC):
     name: str
     label_key: str
     key_name: str | None = None  # the credential (env var / `.env` name) this provider uses
+    # R9: preselected in the `-setup` menu when available; only local providers set it
+    preselectable: bool = False
 
     @abstractmethod
     def is_remote(self, settings: Settings) -> bool: ...
@@ -62,12 +63,40 @@ class Provider(ABC):
     @abstractmethod
     def run_setup(self, ctx: ToolContext, hardware: Hardware) -> SetupResult: ...
 
-    @abstractmethod
     def verify(self, ctx: ToolContext, settings: Settings) -> None:
-        """Raise `SetupAborted` with the reason when the provider does not work."""
+        """Raise `SetupAborted` with the reason when the provider does not work.
+
+        The default builds the chat model with `ctx.credentials` (which include
+        keys typed in this `-setup` run, not yet in `.env`) and runs the shared
+        chat-reply plus tool-call check.
+        """
+        from app.providers.verify import verify_chat_model
+
+        verify_chat_model(ctx, self.chat_model(settings, ctx.credentials), ctx.msg(self.label_key))
 
     @abstractmethod
-    def chat_model(self, settings: Settings, credentials: Credentials) -> BaseChatModel: ...
+    def chat_model(
+        self, settings: Settings, credentials: Credentials, http_client: Any = None
+    ) -> BaseChatModel:
+        """The LangChain chat model for `settings`.
+
+        `http_client` replaces the model's HTTP client where its LangChain class
+        accepts one (an `httpx2.Client` for the OpenAI-compatible providers, used by
+        tests to fake HTTP); providers whose model takes none ignore it.
+        """
+
+
+def choose_or_back(
+    ctx: ToolContext, question: str, choices: list[Choice], default: str | None = None
+) -> str:
+    """`ctx.choose` with a final "back to the menu" choice; picking it aborts the step."""
+    from app.tools.context import BACK
+    from app.tools.context import Choice as _Choice
+
+    pick = ctx.choose(question, [*choices, _Choice(BACK, ctx.msg("setup.back"))], default=default)
+    if pick == BACK:
+        raise SetupAborted(ctx.msg("setup.declined"))
+    return pick
 
 
 _REGISTRY: dict[str, Provider] = {}

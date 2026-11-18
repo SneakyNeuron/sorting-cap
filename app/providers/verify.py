@@ -1,9 +1,13 @@
-"""Shared provider verification: one chat reply plus one tool-call round trip."""
+"""Shared provider verification: one chat reply plus one tool-call round trip.
+
+The prompts and the probe tool's description are the `verify` agent's prompt files.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.messages import message_text, short_error
 from app.providers.base import SetupAborted
 
 if TYPE_CHECKING:
@@ -20,28 +24,10 @@ _NO_TOOLS_HINTS = (
 )
 
 
-def short_error(exc: BaseException, limit: int = 200) -> str:
-    text = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
-    return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-def message_text(message) -> str:
-    content = getattr(message, "content", message)
-    if isinstance(content, str):
-        return content
-    parts = []
-    for block in content or []:
-        if isinstance(block, str):
-            parts.append(block)
-        elif isinstance(block, dict) and block.get("type") == "text":
-            parts.append(block.get("text", ""))
-    return "".join(parts)
-
-
 def verify_chat_model(ctx: ToolContext, model: BaseChatModel, provider_label: str) -> None:
     from langchain.agents import create_agent
     from langchain_core.messages import HumanMessage, ToolMessage
-    from langchain_core.tools import tool
+    from langchain_core.tools import StructuredTool
 
     try:
         reply = model.invoke([HumanMessage(ctx.texts.prompt("verify", "chat"))])
@@ -54,14 +40,17 @@ def verify_chat_model(ctx: ToolContext, model: BaseChatModel, provider_label: st
 
     calls: list[int] = []
 
-    @tool
     def ping(value: int) -> str:
-        """Verification probe. Call it with the number you were given."""
         calls.append(value)
         return "pong"
 
+    probe = StructuredTool.from_function(
+        func=ping,
+        name="ping",
+        description=ctx.texts.prompt("verify", "tool_description").strip(),
+    )
     try:
-        agent = create_agent(model, tools=[ping])
+        agent = create_agent(model, tools=[probe])
         result = agent.invoke(
             {"messages": [HumanMessage(ctx.texts.prompt("verify", "tool"))]},
             config={"recursion_limit": 6},

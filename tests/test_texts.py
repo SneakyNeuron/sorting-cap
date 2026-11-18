@@ -60,3 +60,18 @@ def test_every_prompt_file_reachable():
 
 def test_format_values():
     assert "-x" in Texts("en").message("parse.unknown_command", name="x")
+
+
+def test_one_language_set_everywhere():
+    from typing import get_args
+
+    from app.schemas.settings import SettingsInput
+    from app.settings import Settings
+    from app.texts import LANGUAGE_NAMES
+    from app.tools.context import language_choices
+
+    assert set(LANGUAGE_NAMES) == set(LANGUAGES)
+    assert [c.value for c in language_choices()] == list(LANGUAGES)
+    assert set(get_args(Settings.model_fields["language"].annotation)) == set(LANGUAGES)
+    language_input = SettingsInput.model_fields["language"].annotation
+    assert set(get_args(get_args(language_input)[0])) == set(LANGUAGES)

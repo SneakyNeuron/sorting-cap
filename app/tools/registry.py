@@ -110,7 +110,9 @@ class FieldSpec:
     name: str
     flag: str
     positional: bool
-    kind: str  # "str" | "int" | "bool"
+    # "str" | "bool". Other scalars (int, …) are passed as strings and coerced by the
+    # input model, so a bad value gets the localized validation message.
+    kind: str
     choices: list[str] | None
     required: bool
 
@@ -135,8 +137,6 @@ def field_spec(name: str, info: FieldInfo) -> FieldSpec:
         choices = [str(m.value) for m in annotation]
     elif annotation is bool:
         kind = "bool"
-    elif annotation is int:
-        kind = "int"
     return FieldSpec(
         name=name,
         flag="--" + name.replace("_", "-"),
@@ -209,10 +209,6 @@ def split_chat_line(line: str) -> list[str]:
     return tokens
 
 
-def run_tool(tool: Tool, ctx: ToolContext, inputs: ToolInput) -> ToolOutput:
-    return tool.run(ctx, inputs)
-
-
 __all__ = [
     "BUILTINS",
     "ParseError",
@@ -223,6 +219,5 @@ __all__ = [
     "build_parser",
     "field_specs",
     "parse_command",
-    "run_tool",
     "split_chat_line",
 ]

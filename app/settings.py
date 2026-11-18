@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.errors import LocalizedError
+from app.files import write_private
 from app.providers.base import get_provider, provider_names
 from app.providers.hosts import is_http_url
+from app.texts import DEFAULT_LANGUAGE, Language
 
 SETTINGS_FILE = "settings.json"
 
@@ -30,7 +29,7 @@ class SettingsError(LocalizedError):
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    language: Literal["cs", "en"] = "cs"
+    language: Language = DEFAULT_LANGUAGE
     provider: str | None = None
     model: str | None = None
     ollama_base_url: str = "http://localhost:11434"
@@ -102,12 +101,4 @@ def load_settings(workspace: Path) -> Settings:
 
 def save_settings(workspace: Path, settings: Settings) -> None:
     """Atomic write; the file is created with mode 0600 (only the user reads it)."""
-    path = settings_path(workspace)
-    fd, tmp = tempfile.mkstemp(dir=workspace, prefix=".settings.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(settings.model_dump_json(indent=2) + "\n")
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    write_private(settings_path(workspace), settings.model_dump_json(indent=2) + "\n")

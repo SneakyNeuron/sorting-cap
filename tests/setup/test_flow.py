@@ -50,7 +50,7 @@ class FakeProvider(Provider):
 def fakes(monkeypatch):
     local = FakeProvider("local", preselectable=True)
     remote = FakeProvider("remote", remote=True, model="r1")
-    monkeypatch.setattr(flow, "available_providers", lambda: [local, remote])
+    monkeypatch.setattr(flow, "menu_providers", lambda: [local, remote])
     monkeypatch.setattr(flow, "detect_hardware", lambda ctx: hardware(ram=16))
     monkeypatch.setattr(
         "app.settings.provider_names",
@@ -220,7 +220,7 @@ def novita_only(monkeypatch):
         return Broken(messages=iter([]), received=[])
 
     monkeypatch.setattr(NovitaProvider, "chat_model", chat_model)
-    monkeypatch.setattr(flow, "available_providers", lambda: [NovitaProvider()])
+    monkeypatch.setattr(flow, "menu_providers", lambda: [NovitaProvider()])
     monkeypatch.setattr(flow, "detect_hardware", lambda ctx: hardware(ram=4))
     return lambda r: httpx.Response(500)  # no model list: the id is typed
 

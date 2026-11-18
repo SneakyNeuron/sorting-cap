@@ -9,10 +9,11 @@ Keys are never written to `settings.json`, logs, output or the REPL history.
 from __future__ import annotations
 
 import os
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from app.files import write_private
 
 NOVITA_KEY = "NOVITA_API_KEY"
 OPENAI_KEY = "SORTINGCAP_OPENAI_API_KEY"
@@ -99,11 +100,4 @@ class Credentials:
             out.append(line)
         if not replaced:
             out.append(f"{name}={value}")
-        fd, tmp = tempfile.mkstemp(dir=self.workspace, prefix=".env.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write("\n".join(out) + "\n")
-            os.replace(tmp, path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+        write_private(path, "\n".join(out) + "\n")

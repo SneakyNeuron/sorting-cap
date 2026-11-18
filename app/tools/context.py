@@ -13,7 +13,7 @@ from rich.markup import escape
 from app.credentials import Credentials
 from app.errors import UserFacingError
 from app.settings import Settings, load_settings, save_settings
-from app.texts import Texts
+from app.texts import LANGUAGE_NAMES, LANGUAGES, Texts
 
 if TYPE_CHECKING:
     import httpx
@@ -30,11 +30,21 @@ class InputUnavailable(ToolError):
     """A tool asked for a choice, text or hidden input where none can be given."""
 
 
+# The "back" choice value. A NUL character cannot be part of a model id, tag or
+# provider name, so a listed choice never collides with it.
+BACK = "\x00back"
+
+
 @dataclass(frozen=True)
 class Choice:
     value: str
     label: str
     disabled_reason: str | None = None
+
+
+def language_choices() -> list[Choice]:
+    """The language step's choices (first start and `-setup`), from `texts.LANGUAGES`."""
+    return [Choice(lang, LANGUAGE_NAMES[lang]) for lang in LANGUAGES]
 
 
 class Prompter(Protocol):
@@ -152,7 +162,6 @@ class ToolContext:
     registry: Registry
     prompter: Prompter | None = None
     env: Mapping[str, str] | None = field(default=None, repr=False)  # may hold real keys
-    interactive: bool = False
     runner_factory: Callable[[ToolContext], CommandRunner] | None = None
     http_transport: httpx.BaseTransport | None = None
     settings: Settings = field(init=False)

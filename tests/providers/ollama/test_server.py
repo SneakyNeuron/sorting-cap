@@ -7,6 +7,7 @@ from helpers import FakeRunner, ScriptedPrompter, hardware, make_ctx
 from app.providers.base import SetupAborted
 from app.providers.ollama.server import OllamaServer, Status, docker_run_command
 from app.setup.runner import CommandResult
+from app.tools.context import BACK
 
 BASE = "http://localhost:11434"
 
@@ -102,6 +103,23 @@ def test_start_systemd_interactive(workspace):
     assert (["sudo", "systemctl", "start", "ollama"], "interactive") in runner.calls
 
 
+def test_systemd_unit_not_used_for_non_default_port(workspace):
+    """The unit listens on its own port (11434), so another port gets `ollama serve`."""
+    url = "http://localhost:11500"
+    runner = FakeRunner(lambda a, m: CommandResult(0, "ollama.service enabled\n"))
+    srv, *_ = server(
+        workspace,
+        Http("down", "up"),
+        ScriptedPrompter(True),
+        runner,
+        which=lambda n: "/usr/bin/ollama" if n == "ollama" else None,
+    )
+    assert srv.ensure(hardware(), url) == url
+    assert ["sudo", "systemctl", "start", "ollama"] not in [c for c, _ in runner.calls]
+    assert (["ollama", "serve"], "detached") in runner.calls
+    assert {"OLLAMA_HOST": "127.0.0.1:11500"} in runner.envs
+
+
 def test_start_container(workspace):
     runner = FakeRunner(lambda a, m: CommandResult(0, "exited\n"))
     srv, *_ = server(
@@ -128,17 +146,17 @@ def test_docker_install_bound_to_loopback(workspace, gpu):
 
 
 def test_docker_default_when_usable_native_otherwise(workspace):
-    p = ScriptedPrompter("back")
+    p = ScriptedPrompter(BACK)
     srv, *_ = server(workspace, Http("down"), p)
     with pytest.raises(SetupAborted):
         srv.ensure(hardware(), BASE)
     assert p.choose_calls()[0]["default"] == "docker"
-    p = ScriptedPrompter("back")
+    p = ScriptedPrompter(BACK)
     srv, *_ = server(workspace, Http("down"), p)
     with pytest.raises(SetupAborted):
         srv.ensure(hardware(docker=False, usable=False), BASE)
     assert p.choose_calls()[0]["default"] == "native"
-    assert [c.value for c in p.choose_calls()[0]["choices"]] == ["native", "back"]
+    assert [c.value for c in p.choose_calls()[0]["choices"]] == ["native", BACK]
 
 
 def test_port_taken_uses_next_free_port(workspace):
@@ -167,7 +185,7 @@ def test_native_install(workspace):
     assert "curl -fsSL https://ollama.com/install.sh | sh" in buf.getvalue()
 
 
-@pytest.mark.parametrize("answers", [("docker", False), ("native", False), ("back",)])
+@pytest.mark.parametrize("answers", [("docker", False), ("native", False), (BACK,)])
 def test_declining_runs_nothing(workspace, answers):
     runner = FakeRunner()
     srv, *_ = server(workspace, Http("down"), ScriptedPrompter(*answers), runner)
