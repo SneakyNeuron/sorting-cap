@@ -31,6 +31,41 @@ class FakeToolModel(GenericFakeChatModel):
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
+class FakeStructuredModel(GenericFakeChatModel):
+    """A chat model whose `with_structured_output(schema)` returns queued replies.
+
+    Each queued reply is a Pydantic object or a dict (validated into the schema) that
+    the next structured call returns, or an exception it raises. `calls` records the
+    messages of every structured call; an empty queue fails the test.
+    """
+
+    queue: list = []
+    calls: list = []
+    schemas: list = []
+
+    def with_structured_output(self, schema, **kwargs):
+        from langchain_core.runnables import RunnableLambda
+
+        self.schemas.append(schema)
+
+        def _answer(messages):
+            self.calls.append(list(messages) if isinstance(messages, list) else messages)
+            if not self.queue:
+                raise AssertionError("unexpected structured-output call")
+            reply = self.queue.pop(0)
+            if isinstance(reply, BaseException):
+                raise reply
+            if isinstance(reply, dict):
+                return schema.model_validate(reply)
+            return reply
+
+        return RunnableLambda(_answer)
+
+
+def structured_model(*replies: Any) -> FakeStructuredModel:
+    return FakeStructuredModel(messages=iter([]), queue=list(replies), calls=[], schemas=[])
+
+
 def fake_model(*replies: AIMessage | str) -> FakeToolModel:
     msgs = [AIMessage(r) if isinstance(r, str) else r for r in replies]
     return FakeToolModel(messages=iter(msgs), received=[])

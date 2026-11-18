@@ -49,12 +49,12 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - [x] Tests: render/parse round trip in cs and en; a hand-edited title and body kept; unknown sections kept; a translated title still parsed; merge cases (answer replaces, source fills, conflict listed); CV satisfied by a flagged source; `-show-profile` output in both languages, headless `--json`, and still working when `sources/*/text.md` and `quarantine/` are unreadable (R17); the agent's tool list is exactly `help`, `tour`, `show-profile` (T11)
 
 ## Group 7: Extraction and the intake graph
-- [ ] `tests/helpers.py`: a fake chat model that supports `with_structured_output` (returns queued Pydantic objects or raises), alongside the Phase 1 `FakeToolModel`
-- [ ] `app/schemas/intake.py`: extraction output model with per-item relation `match`/`adds`/`contradicts` (T8), round state and summary models
-- [ ] `prompts/{cs,en}/intake/extract.md`
-- [ ] `app/intake/extract.py`: structured-output call with the character budget and the model-error fallbacks (T8)
-- [ ] `app/intake/graph.py`: LangGraph `StateGraph` with sources → intro → question loop (`interrupt()`) → merge → write; `next`/`done`/empty handling with localized words (R9); a headless mode without the dialog nodes (T10)
-- [ ] Tests with a fake structured-output model: a full round answering some questions, skipping with `next` and ending with `done`; must-know questions before nice-to-have; already-filled items not asked; a source fills empty items, `adds` appends a paragraph, `match` changes nothing and `contradicts` becomes a conflict; a cancelled round or a failed source extraction leaves `extracted` false and the next round (chat or headless) extracts it from `text.md` without refetching; the CV question with a path flags the source; a model error on an answer keeps the text verbatim and on a source skips it with a note; a text over 12 000 characters is cut and the cut noted; Ctrl-C mid-round leaves `profile.md` as it was before the round
+- [x] `tests/helpers.py`: a fake chat model that supports `with_structured_output` (returns queued Pydantic objects or raises), alongside the Phase 1 `FakeToolModel`
+- [x] `app/schemas/intake.py`: extraction output model with per-item relation `match`/`adds`/`contradicts` (T8), round state and summary models
+- [x] `prompts/{cs,en}/intake/extract.md`
+- [x] `app/intake/extract.py`: structured-output call with the character budget and the model-error fallbacks (T8)
+- [x] `app/intake/graph.py`: LangGraph `StateGraph` with sources → intro → question loop (`interrupt()`) → merge → write; `next`/`done`/empty handling with localized words (R9); a headless mode without the dialog nodes (T10)
+- [x] Tests with a fake structured-output model: a full round answering some questions, skipping with `next` and ending with `done`; must-know questions before nice-to-have; already-filled items not asked; a source fills empty items, `adds` appends a paragraph, `match` changes nothing and `contradicts` becomes a conflict; a cancelled round or a failed source extraction leaves `extracted` false and the next round (chat or headless) extracts it from `text.md` without refetching; the CV question with a path flags the source; a model error on an answer keeps the text verbatim and on a source skips it with a note; a text over 12 000 characters is cut and the cut noted; Ctrl-C mid-round leaves `profile.md` as it was before the round
 
 ## Group 8: Filter file, `-add-information` tool and round summary
 - [ ] `prompts/{cs,en}/filter/generate.md`; `app/intake/filter_file.py`: structured output into `FilterFile`, rendered with the generated-file header, written with `write_private` (R14, T9); regenerated only when the profile changed or the file is missing
