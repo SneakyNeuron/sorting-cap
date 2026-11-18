@@ -47,6 +47,23 @@ def test_progress_to_success(workspace):
     assert calls == ["/api/tags", "/api/pull"]
 
 
+def test_markup_like_status_shown_literally(workspace):
+    import io
+
+    from rich.console import Console
+
+    lines = [
+        {"status": "pulling [/x]", "total": 100, "completed": 100},
+        {"status": "success"},
+    ]
+    handler, _ = http(lines=lines)
+    ctx, _ = make_ctx(workspace, handler=handler)
+    buf = io.StringIO()
+    ctx.console = Console(file=buf, force_terminal=True, color_system=None, width=120)
+    pull_model(ctx, BASE, "odd[/x]:1")  # the progress bar renders tag and status as text
+    assert "odd[/x]:1 success" in buf.getvalue()
+
+
 def test_interrupted_stream(workspace):
     handler, _ = http(lines=[{"status": "pulling abc", "total": 100, "completed": 10}])
     ctx, _ = make_ctx(workspace, handler=handler)

@@ -11,11 +11,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.credentials import Credentials
+from app.errors import UserFacingError
 from app.providers.base import get_provider
 from app.providers.verify import message_text
 from app.settings import Settings
 from app.texts import Texts
-from app.tools.context import ToolContext, ToolError
+from app.tools.context import ToolContext
 from app.tools.registry import Registry
 
 if TYPE_CHECKING:
@@ -49,12 +50,12 @@ def wrap_tools(
     for tool in registry.agent_tools():
 
         def _run(_tool=tool, **kwargs: Any) -> str:
-            ctx = ctx_factory()
             try:
+                ctx = ctx_factory()  # reads settings.json, which may be broken by now
                 inputs = _tool.input_model.model_validate(kwargs)
                 return _tool.run(ctx, inputs).as_agent_text()
-            except ToolError as exc:
-                return exc.message
+            except UserFacingError as exc:
+                return exc.text(texts)
 
         wrapped.append(
             StructuredTool.from_function(

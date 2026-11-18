@@ -8,6 +8,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from app.credentials import KNOWN_KEYS, mask
+from app.errors import validation_message
 from app.providers.remote import confirm_data_notice
 from app.schemas.settings import SettingsInput, SettingsOutput
 from app.settings import Settings
@@ -37,7 +38,7 @@ def handle(ctx: ToolContext, inputs: SettingsInput) -> SettingsOutput:
     try:
         candidate = Settings.model_validate({**current.model_dump(), **updates})
     except ValidationError as exc:
-        detail = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
+        detail = validation_message(exc, ctx.texts)
         raise ToolError(ctx.msg("settings.invalid", detail=detail)) from exc
     becomes_remote = candidate.is_remote() and (
         not current.is_remote()

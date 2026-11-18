@@ -190,3 +190,12 @@ def test_novita_key_never_in_settings_logs_or_history(workspace, monkeypatch):
     from app.credentials import Credentials
 
     assert Credentials(workspace, {}).get(NOVITA_KEY) == secret
+
+
+def test_invalid_setup_result_shows_short_validation_message(workspace, fakes):
+    local, _ = fakes
+    local.run_setup = lambda ctx, hw: SetupResult(model="m", updates={"ollama_base_url": "x[/y]"})
+    out, _, text = run(workspace, "en", "local", "quit")
+    assert out.completed is False
+    assert "Cannot save the setup: ollama_base_url: expected an http:// or https:// URL" in text
+    assert "x[/y]" in text and "pydantic" not in text and "input_value" not in text

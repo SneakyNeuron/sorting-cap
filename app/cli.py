@@ -34,6 +34,20 @@ def package_version() -> str:
     return version("sortingcap")
 
 
+def usage_text() -> str:
+    """The usage line in the user's language (the default one when settings cannot be read)."""
+    from app.errors import UserFacingError
+    from app.settings import load_settings
+    from app.texts import Texts
+    from app.workspace import resolve_workspace
+
+    try:
+        texts = Texts(load_settings(resolve_workspace()).language)
+    except UserFacingError:
+        texts = Texts()
+    return texts.message("cli.usage")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] in (["--version"], ["-V"]):
@@ -44,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         return run_headless(args[1:])
     if args:
-        print("usage: sortingcap [--version] | sortingcap run <command> [args] [--json] [--yes]")
+        print(usage_text())
         return 2
     from app.repl import run_repl
 

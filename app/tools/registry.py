@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 
+from app.errors import UserFacingError, validation_message
 from app.schemas.base import ToolInput, ToolOutput
 from app.texts import LANGUAGES, Texts, has_message
 from app.tools.context import ToolContext, ToolError
@@ -86,12 +87,8 @@ class Registry:
 # --- parser generation -------------------------------------------------------
 
 
-class ParseError(Exception):
+class ParseError(UserFacingError):
     """Bad command line; `message` is short and user-facing."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
 
 
 class UnknownCommand(ParseError):
@@ -177,14 +174,6 @@ def build_parser(registry: Registry, texts: Texts) -> argparse.ArgumentParser:
     return parser
 
 
-def _validation_message(exc: ValidationError) -> str:
-    parts = []
-    for err in exc.errors():
-        loc = ".".join(str(p) for p in err["loc"])
-        parts.append(f"{loc}: {err['msg']}" if loc else err["msg"])
-    return "; ".join(parts)
-
-
 def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tuple[Tool, ToolInput]:
     """Parse `[command, *args]` into a tool and its validated input model."""
     if not argv:
@@ -205,7 +194,7 @@ def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tupl
         inputs = tool.input_model.model_validate(values)
     except ValidationError as exc:
         raise ParseError(
-            texts.message("parse.bad_arguments", name=name, detail=_validation_message(exc))
+            texts.message("parse.bad_arguments", name=name, detail=validation_message(exc, texts))
         ) from exc
     return tool, inputs
 

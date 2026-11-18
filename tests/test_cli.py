@@ -70,3 +70,13 @@ def test_tracing_vars_cover_every_name_langsmith_reads():
     assert set(cli.TRACING_VARS) == {
         f"{ns}_{name}" for ns in ("LANGSMITH", "LANGCHAIN") for name in ("TRACING_V2", "TRACING")
     }
+
+
+def test_usage_in_users_language(capsys, workspace):
+    from app.settings import Settings, save_settings
+
+    assert cli.main(["nonsense"]) == 2
+    assert capsys.readouterr().out.startswith("použití: sortingcap")
+    save_settings(workspace, Settings(language="en"))
+    assert cli.main(["nonsense"]) == 2
+    assert capsys.readouterr().out.startswith("usage: sortingcap")

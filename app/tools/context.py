@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from rich.console import Console
+from rich.markup import escape
 
 from app.credentials import Credentials
+from app.errors import UserFacingError
 from app.settings import Settings, load_settings, save_settings
 from app.texts import Texts
 
@@ -20,12 +22,8 @@ if TYPE_CHECKING:
     from app.tools.registry import Registry
 
 
-class ToolError(Exception):
+class ToolError(UserFacingError):
     """A tool failed; `message` is a user-facing text in the current language."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
 
 
 class InputUnavailable(ToolError):
@@ -107,17 +105,24 @@ class InteractivePrompter:
 
     def choose(self, question: str, choices: list[Choice], default: str | None = None) -> str:
         t = self._texts()
-        self.console.print(question)
+        self.console.print(question, highlight=False, markup=False)
         selectable: dict[str, str] = {}
         number = 0
         for choice in choices:
             if choice.disabled_reason:
-                self.console.print(f"   [dim]–  {choice.label} ({choice.disabled_reason})[/dim]")
+                self.console.print(
+                    f"   –  {choice.label} ({choice.disabled_reason})",
+                    style="dim",
+                    highlight=False,
+                    markup=False,
+                )
                 continue
             number += 1
             selectable[str(number)] = choice.value
             mark = " [green]←[/green]" if choice.value == default else ""
-            self.console.print(f"  [cyan]{number}[/cyan]  {choice.label}{mark}")
+            self.console.print(
+                f"  [cyan]{number}[/cyan]  {escape(choice.label)}{mark}", highlight=False
+            )
         default_number = next((n for n, v in selectable.items() if v == default), "")
         suffix = f" ({default_number})" if default_number else ""
         while True:
@@ -126,7 +131,7 @@ class InteractivePrompter:
                 return selectable[answer]
             if answer in selectable.values():
                 return answer
-            self.console.print(t.message("prompt.choice_invalid"))
+            self.console.print(t.message("prompt.choice_invalid"), highlight=False, markup=False)
 
     def text(self, question, default=None, validate=None) -> str:
         while True:
@@ -134,7 +139,7 @@ class InteractivePrompter:
             problem = validate(answer) if validate else None
             if problem is None:
                 return answer
-            self.console.print(f"[yellow]{problem}[/yellow]")
+            self.console.print(problem, style="yellow", highlight=False, markup=False)
 
     def secret(self, question: str) -> str:
         return self._ask(f"{question} ", password=True).strip()
@@ -190,8 +195,7 @@ class ToolContext:
         return self.texts.message(key, **values)
 
     def say(self, key: str, style: str | None = None, **values: object) -> None:
-        text = self.msg(key, **values)
-        self.console.print(f"[{style}]{text}[/{style}]" if style else text, highlight=False)
+        self.console.print(self.msg(key, **values), style=style, highlight=False, markup=False)
 
     # Prompt shortcuts
     def confirm(self, question: str, default: bool = False) -> bool:

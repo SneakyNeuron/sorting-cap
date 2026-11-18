@@ -15,9 +15,10 @@ class SetupOutput(ToolOutput):
     def render(self, ctx) -> None:
         if self.completed:
             ctx.console.print(
-                "[green]"
-                + ctx.texts.message("setup.done", provider=self.provider, model=self.model)
-                + "[/green]"
+                ctx.texts.message("setup.done", provider=self.provider, model=self.model),
+                style="green",
+                highlight=False,
+                markup=False,
             )
         else:
-            ctx.console.print(ctx.texts.message("setup.incomplete"))
+            ctx.console.print(ctx.texts.message("setup.incomplete"), highlight=False, markup=False)

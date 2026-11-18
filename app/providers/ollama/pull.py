@@ -39,7 +39,7 @@ def pull_model(ctx: ToolContext, base_url: str, tag: str) -> None:
                 "POST", f"{base_url}/api/pull", json={"model": tag, "stream": True}
             ) as response,
             Progress(
-                TextColumn("{task.description}"),
+                TextColumn("{task.description}", markup=False),
                 BarColumn(),
                 DownloadColumn(),
                 TransferSpeedColumn(),

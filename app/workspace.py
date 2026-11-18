@@ -7,12 +7,14 @@ import stat
 from collections.abc import Mapping
 from pathlib import Path
 
+from app.errors import LocalizedError
+
 ENV_VAR = "SORTINGCAP_WORKSPACE"
 DEFAULT_DIRNAME = "SortingCap"
 
 
-class WorkspaceError(Exception):
-    """The workspace cannot be resolved or created."""
+class WorkspaceError(LocalizedError):
+    """The workspace cannot be resolved or created (text in the default language)."""
 
 
 def resolve_workspace(env: Mapping[str, str] | None = None) -> Path:
@@ -37,9 +39,11 @@ def ensure_workspace(env: Mapping[str, str] | None = None) -> Path:
             path.mkdir(mode=0o700)
             path.chmod(0o700)
     except OSError as exc:
-        raise WorkspaceError(f"cannot create workspace {path}: {exc.strerror or exc}") from exc
+        raise WorkspaceError(
+            "workspace.create_failed", path=str(path), detail=exc.strerror or str(exc)
+        ) from exc
     if not path.is_dir():
-        raise WorkspaceError(f"workspace {path} is not a directory")
+        raise WorkspaceError("workspace.not_directory", path=str(path))
     return path
 
 

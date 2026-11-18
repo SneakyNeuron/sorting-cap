@@ -211,3 +211,13 @@ def test_model_error_propagates_and_history_untouched(workspace):
     with pytest.raises(ConnectionError):
         agent.ask("hi", SETTINGS, Credentials(workspace, {}))
     assert agent.history == []
+
+
+def test_broken_settings_during_tool_call_reported_to_agent(workspace):
+    (workspace / "settings.json").write_text("{oops")
+    model = fake_model(tool_call("help"), "The settings file is broken.")
+    agent = agent_for(workspace, model)
+    reply = agent.ask("what can you do", SETTINGS, Credentials(workspace, {}))
+    assert reply.answer == "The settings file is broken."
+    tool_messages = [m for m in agent.history if m.type == "tool"]
+    assert "is not valid JSON (line 1, column 2)" in tool_messages[0].content

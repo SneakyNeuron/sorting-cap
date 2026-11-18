@@ -17,11 +17,12 @@ class ToolInput(BaseModel):
 class ToolOutput(BaseModel):
     def render(self, ctx: ToolContext) -> None:
         """Show the output to a human. Subclasses override this."""
+        from rich.markup import escape
         from rich.table import Table
 
         table = Table(show_header=False, box=None)
         for name, value in self.model_dump(mode="json").items():
-            table.add_row(name, str(value))
+            table.add_row(escape(name), escape(str(value)))
         ctx.console.print(table)
 
     def as_agent_text(self) -> str:

@@ -65,3 +65,28 @@ def test_settings_file_written_0600(workspace):
 
     save_settings(workspace, Settings())
     assert stat.S_IMODE(settings_path(workspace).stat().st_mode) == 0o600
+
+
+def test_file_errors_are_message_keys_in_callers_language(workspace):
+    from app.texts import Texts
+
+    path = settings_path(workspace)
+    path.write_text("{not json")
+    with pytest.raises(SettingsError) as exc:
+        load_settings(workspace)
+    assert exc.value.text(Texts("en")) == (
+        f"The settings file {path} is not valid JSON (line 1, column 2)."
+    )
+    assert "není platný JSON" in str(exc.value)  # default language
+    path.write_text("[]")
+    with pytest.raises(SettingsError) as exc:
+        load_settings(workspace)
+    assert exc.value.key == "settings.file_not_object"
+    path.write_text(json.dumps({"provider": "foo"}))
+    with pytest.raises(SettingsError) as exc:
+        load_settings(workspace)
+    assert exc.value.text(Texts("en")) == (
+        f"The settings file {path} is invalid: provider: unknown provider 'foo'; known: "
+        "ollama, novita, openai_compatible"
+    )
+    assert "neznámý poskytovatel 'foo'" in exc.value.text(Texts("cs"))

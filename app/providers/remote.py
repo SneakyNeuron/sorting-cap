@@ -18,9 +18,11 @@ def confirm_data_notice(ctx: ToolContext, url: str | None = None) -> bool:
 
     A plain `http://` URL to another host also gets a cleartext warning.
     """
-    ctx.console.print(f"[yellow]{ctx.msg('remote.notice')}[/yellow]", highlight=False)
+    ctx.console.print(ctx.msg("remote.notice"), style="yellow", highlight=False, markup=False)
     if is_cleartext_remote(url):
-        ctx.console.print(f"[yellow]{ctx.msg('remote.cleartext')}[/yellow]", highlight=False)
+        ctx.console.print(
+            ctx.msg("remote.cleartext"), style="yellow", highlight=False, markup=False
+        )
     return ctx.confirm(ctx.msg("remote.confirm"))
 
 

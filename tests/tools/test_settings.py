@@ -36,6 +36,14 @@ def test_provider_validated_against_registry(workspace):
     assert not (workspace / "settings.json").exists()
 
 
+def test_invalid_provider_message_in_users_language(workspace):
+    ctx, _ = make_ctx(workspace)  # default settings: Czech
+    with pytest.raises(ToolError) as exc:
+        handle(ctx, SettingsInput(provider="foo"))
+    assert exc.value.message.startswith("Neplatné nastavení: provider: neznámý poskytovatel 'foo'")
+    assert "unknown" not in exc.value.message
+
+
 def test_provider_change_without_model_clears_model(workspace):
     save_settings(workspace, Settings(provider="ollama", model="qwen3.5:9b-q4_K_M"))
     ctx, _ = make_ctx(workspace)

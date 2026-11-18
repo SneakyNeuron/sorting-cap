@@ -129,7 +129,7 @@ class OllamaServer:
 
     def _confirm_command(self, command: str) -> None:
         ctx = self.ctx
-        ctx.console.print(f"[bold]$ {command}[/bold]", highlight=False, markup=False)
+        ctx.console.print(f"$ {command}", style="bold", highlight=False, markup=False)
         if not ctx.confirm(ctx.msg("ollama.confirm_command")):
             raise SetupAborted(ctx.msg("setup.declined"))
 

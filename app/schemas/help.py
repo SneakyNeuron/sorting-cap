@@ -30,21 +30,24 @@ class HelpOutput(ToolOutput):
     command: CommandDetail | None = None
 
     def render(self, ctx) -> None:
+        from rich.markup import escape
         from rich.table import Table
 
         if self.command is not None:
-            ctx.console.print(f"[bold]-{self.command.name}[/bold]  {self.command.description}")
+            ctx.console.print(
+                f"[bold]-{escape(self.command.name)}[/bold]  {escape(self.command.description)}"
+            )
             if not self.command.args:
-                ctx.console.print(ctx.texts.message("help.no_args"))
+                ctx.console.print(ctx.texts.message("help.no_args"), markup=False)
                 return
             table = Table(show_header=False, box=None, padding=(0, 2))
             for arg in self.command.args:
-                extra = f" [dim]({' | '.join(arg.choices)})[/dim]" if arg.choices else ""
-                table.add_row(f"[cyan]{arg.name}[/cyan]", arg.help + extra)
+                extra = f" [dim]({escape(' | '.join(arg.choices))})[/dim]" if arg.choices else ""
+                table.add_row(f"[cyan]{escape(arg.name)}[/cyan]", escape(arg.help) + extra)
             ctx.console.print(table)
             return
         table = Table(show_header=False, box=None, padding=(0, 2))
         for cmd in self.commands:
-            table.add_row(f"[cyan]-{cmd.name}[/cyan]", cmd.description)
+            table.add_row(f"[cyan]-{escape(cmd.name)}[/cyan]", escape(cmd.description))
         ctx.console.print(table)
-        ctx.console.print(f"[dim]{ctx.texts.message('help.footer')}[/dim]")
+        ctx.console.print(ctx.texts.message("help.footer"), style="dim", markup=False)

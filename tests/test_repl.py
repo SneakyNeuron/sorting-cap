@@ -274,3 +274,66 @@ def test_model_error_keeps_repl_alive(workspace):
         text = buf.getvalue()
     assert "The model (novita) failed: no route to host" in text
     assert "-tour" in text  # -help still ran afterwards
+
+
+def _raise_markup(ctx, inputs):
+    raise ToolError("bad [/x] thing [bold]")
+
+
+def test_markup_like_text_is_printed_literally(workspace, registry):
+    registry.register(Tool("markup", StubInput, StubOutput, _raise_markup))
+    code, out, repl = drive(
+        workspace,
+        "-foo[/x]\r-settings --provider zz[/q]\r-markup\r-stub --value 2\r-exit\r",
+        registry=registry,
+    )
+    assert code == 0
+    assert "Unknown command: -foo[/x]" in out
+    assert "zz[/q]" in out
+    assert "bad [/x] thing [bold]" in out
+    assert [StubInput(value=2)] == SEEN
+
+
+def test_markup_in_direct_calls_does_not_raise(workspace, registry):
+    with repl_session(workspace, registry=registry) as (repl, inp, buf):
+        assert repl.handle_line("-foo[/x]") is True
+        assert repl.handle_line("-settings --provider zz[/q]") is True
+        repl.error("[/red] closing")
+        assert "[/red] closing" in buf.getvalue()
+
+
+def test_validation_detail_is_not_swallowed(workspace, registry):
+    _, out, _ = drive(
+        workspace, "-settings --ollama-base-url localhost:1[x]\r-exit\r", registry=registry
+    )
+    assert "with a host, got 'localhost:1[x]'" in out.replace("\n", " ")
+
+
+def test_ctrl_d_at_first_start_quits_cleanly(workspace):
+    code, out, _ = drive(workspace, "\x04", settings=None)
+    assert code == 0
+    assert not (workspace / "settings.json").exists()
+    assert "Jazyk / Language" in out
+
+
+def test_ctrl_c_at_first_start_asks_again(workspace):
+    code, out, _ = drive(workspace, "\x032\r-exit\r", settings=None)
+    assert code == 0
+    assert load_settings(workspace).language == "en"
+    assert out.count("Jazyk / Language") == 2
+
+
+def test_ctrl_d_at_tool_prompt_cancels(workspace, registry):
+    code, out, _ = drive(workspace, "-stub --action confirm\r\x04-stub\r-exit\r", registry=registry)
+    assert "Cancelled." in out and "crashed" not in out
+    assert len(SEEN) == 2
+
+
+def test_broken_settings_reported_in_default_language(workspace, registry):
+    with repl_session(workspace, registry=registry) as (repl, inp, buf):
+        (workspace / "settings.json").write_text("{oops")
+        repl.handle_line("-stub")
+        repl.handle_line("hello")
+    text = buf.getvalue().replace("\n", " ")
+    assert text.count("není platný JSON (řádek 1, sloupec 2)") == 2
+    assert SEEN == []

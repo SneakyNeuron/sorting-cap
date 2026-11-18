@@ -10,15 +10,21 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic_core import PydanticCustomError
 
+from app.errors import LocalizedError
 from app.providers.base import get_provider, provider_names
 from app.providers.hosts import is_http_url
 
 SETTINGS_FILE = "settings.json"
 
 
-class SettingsError(Exception):
-    """`settings.json` is unreadable or invalid. The file is left untouched."""
+class SettingsError(LocalizedError):
+    """`settings.json` is unreadable or invalid. The file is left untouched.
+
+    Raised before the language is known: the caller resolves the text
+    (`exc.text(texts)`), the default language when settings cannot be read.
+    """
 
 
 class Settings(BaseModel):
@@ -36,7 +42,11 @@ class Settings(BaseModel):
     @classmethod
     def _known_provider(cls, value: str | None) -> str | None:
         if value is not None and value not in provider_names():
-            raise ValueError(f"unknown provider {value!r}; known: {', '.join(provider_names())}")
+            raise PydanticCustomError(
+                "unknown_provider",
+                "unknown provider '{value}'; known: {known}",
+                {"value": value, "known": ", ".join(provider_names())},
+            )
         return value
 
     @field_validator("ollama_base_url", "openai_base_url")
@@ -45,7 +55,11 @@ class Settings(BaseModel):
         if value is None:
             return None
         if not is_http_url(value):
-            raise ValueError(f"expected an http:// or https:// URL with a host, got {value!r}")
+            raise PydanticCustomError(
+                "http_url",
+                "expected an http:// or https:// URL with a host, got '{value}'",
+                {"value": value},
+            )
         return value.strip().rstrip("/")
 
     def is_remote(self) -> bool:
@@ -72,20 +86,18 @@ def load_settings(workspace: Path) -> Settings:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise SettingsError(
-            f"{path}: not valid JSON (line {exc.lineno}, column {exc.colno}): {exc.msg}"
+            "settings.file_not_json", path=str(path), line=exc.lineno, column=exc.colno
         ) from exc
     except OSError as exc:
-        raise SettingsError(f"{path}: cannot read: {exc.strerror or exc}") from exc
+        raise SettingsError(
+            "settings.file_unreadable", path=str(path), detail=exc.strerror or str(exc)
+        ) from exc
     if not isinstance(data, dict):
-        raise SettingsError(f"{path}: expected a JSON object")
+        raise SettingsError("settings.file_not_object", path=str(path))
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:
-        problems = "; ".join(
-            f"field '{'.'.join(str(p) for p in err['loc']) or '?'}': {err['msg']}"
-            for err in exc.errors()
-        )
-        raise SettingsError(f"{path}: {problems}") from exc
+        raise SettingsError("settings.file_invalid", path=str(path), detail=exc) from exc
 
 
 def save_settings(workspace: Path, settings: Settings) -> None:

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
+from app.errors import validation_message
 from app.providers.base import Provider, SetupAborted, providers
 from app.schemas.setup import SetupInput, SetupOutput
 from app.settings import Settings
@@ -64,7 +65,7 @@ def _menu(ctx: ToolContext, hw: Hardware) -> tuple[list[Choice], str | None]:
                 default = provider.name
         else:
             reason = ctx.msg(availability.reason_key or "setup.unavailable")
-            ctx.console.print(f"[yellow]{reason}[/yellow]", highlight=False)
+            ctx.console.print(reason, style="yellow", highlight=False, markup=False)
             choices.append(
                 Choice(provider.name, label, disabled_reason=ctx.msg("setup.unavailable"))
             )
@@ -107,11 +108,13 @@ def handle(ctx: ToolContext, inputs: SetupInput) -> SetupOutput:
                     }
                 )
             except ValidationError as exc:
-                raise SetupAborted(ctx.msg("setup.invalid_result", detail=str(exc))) from exc
+                raise SetupAborted(
+                    ctx.msg("setup.invalid_result", detail=validation_message(exc, ctx.texts))
+                ) from exc
             ctx.say("setup.verifying", provider=ctx.msg(provider.label_key), model=result.model)
             provider.verify(ctx, candidate)
         except SetupAborted as exc:
-            ctx.console.print(f"[red]{exc.message}[/red]", highlight=False)
+            ctx.console.print(exc.message, style="red", highlight=False, markup=False)
             ctx.say("setup.back_to_menu")
             continue
         candidate = candidate.model_copy(update={"setup_completed_at": datetime.now(UTC)})

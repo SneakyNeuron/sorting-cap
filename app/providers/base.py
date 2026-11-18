@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.errors import UserFacingError
+
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
@@ -20,15 +22,11 @@ if TYPE_CHECKING:
     from app.tools.context import ToolContext
 
 
-class SetupAborted(Exception):
+class SetupAborted(UserFacingError):
     """A provider's setup or verification failed or a step was declined.
 
     `message` is already a user-facing text in the current language.
     """
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
 
 
 @dataclass(frozen=True)

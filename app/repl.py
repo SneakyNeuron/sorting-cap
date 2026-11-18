@@ -16,12 +16,12 @@ from rich.markdown import Markdown
 
 from app.agent import ChatAgent, ModelFactory, NoModelConfigured, default_model_factory
 from app.credentials import Credentials
-from app.providers.base import SetupAborted
+from app.errors import UserFacingError
 from app.providers.verify import short_error
 from app.settings import Settings, SettingsError, load_settings, save_settings, settings_exist
 from app.texts import Texts
-from app.tools.context import Choice, InteractivePrompter, ToolContext, ToolError
-from app.tools.registry import ParseError, Registry, parse_command, split_chat_line
+from app.tools.context import Choice, InteractivePrompter, ToolContext
+from app.tools.registry import Registry, parse_command, split_chat_line
 from app.workspace import WorkspaceError, ensure_workspace, workspace_is_private
 
 EXIT_COMMANDS = ("-exit",)
@@ -113,30 +113,45 @@ class Repl:
 
     def say(self, key: str, style: str | None = None, **values: object) -> None:
         text = self.texts().message(key, **values)
-        self.console.print(f"[{style}]{text}[/{style}]" if style else text, highlight=False)
+        self.console.print(text, style=style, highlight=False, markup=False)
 
     def error(self, text: str) -> None:
-        self.console.print(f"[red]{text}[/red]", highlight=False, markup=True)
+        """Print a plain-text error; dynamic parts are never read as Rich markup."""
+        self.console.print(text, style="red", highlight=False, markup=False)
+
+    def report(self, exc: UserFacingError, texts: Texts | None = None) -> None:
+        self.error(exc.text(texts or self.texts()))
 
     # --- startup ----------------------------------------------------------
 
-    def first_start(self) -> None:
+    def first_start(self) -> bool:
+        """Ask for the language on the very first start; False when the user quits (Ctrl-D).
+
+        Ctrl-C asks again; nothing is saved until a language is chosen.
+        """
         if settings_exist(self.workspace):
-            return
+            return True
         texts = Texts()
         prompter = InteractivePrompter(self.console, lambda: texts)
-        language = prompter.choose(
-            texts.message("setup.language_question"),
-            [Choice("cs", "Čeština"), Choice("en", "English")],
-            default="cs",
-        )
-        save_settings(self.workspace, Settings(language=language))
+        while True:
+            try:
+                language = prompter.choose(
+                    texts.message("setup.language_question"),
+                    [Choice("cs", "Čeština"), Choice("en", "English")],
+                    default="cs",
+                )
+            except KeyboardInterrupt:
+                continue
+            except EOFError:
+                return False
+            save_settings(self.workspace, Settings(language=language))
+            return True
 
     def greet(self) -> None:
         try:
             settings = self.settings()
         except SettingsError as exc:
-            self.error(str(exc))
+            self.report(exc)
             return
         self.say("repl.greeting", style="bold")
         if not workspace_is_private(self.workspace):
@@ -158,13 +173,9 @@ class Repl:
             tool, inputs = parse_command(self.registry, ctx.texts, tokens)
             output = tool.run(ctx, inputs)
             output.render(ctx)
-        except ParseError as exc:
-            self.error(exc.message)
-        except (ToolError, SetupAborted) as exc:
-            self.error(exc.message)
-        except SettingsError as exc:
-            self.error(str(exc))
-        except KeyboardInterrupt:
+        except UserFacingError as exc:
+            self.report(exc, texts)
+        except (KeyboardInterrupt, EOFError):  # Ctrl-C or Ctrl-D at a tool prompt
             self.say("repl.cancelled", style="yellow")
         except Exception as exc:  # noqa: BLE001 - the REPL must survive any tool error
             self.error(texts.message("repl.tool_crashed", detail=short_error(exc)))
@@ -173,7 +184,7 @@ class Repl:
         try:
             settings = self.settings()
         except SettingsError as exc:
-            self.error(str(exc))
+            self.report(exc)
             return
         texts = Texts(settings.language)
         try:
@@ -210,7 +221,9 @@ class Repl:
         return True
 
     def run(self) -> int:
-        self.first_start()
+        if not self.first_start():
+            self.say("repl.bye")
+            return 0
         self.greet()
         while True:
             try:
@@ -230,6 +243,6 @@ def run_repl() -> int:
     try:
         workspace = ensure_workspace()
     except WorkspaceError as exc:
-        console.print(f"[red]error: {exc}[/red]")
+        console.print(exc.text(), style="red", highlight=False, markup=False)
         return 1
     return Repl(workspace, console).run()
