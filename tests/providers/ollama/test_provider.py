@@ -52,6 +52,26 @@ def test_run_setup_saves_url_and_model(workspace, monkeypatch):
     assert pulled == [("http://localhost:11436", "qwen3.5:4b-q4_K_M")]
 
 
+def test_remote_ollama_url_gets_notice_before_contact(workspace, monkeypatch):
+    contacted = []
+
+    class Srv:
+        def __init__(self, ctx):
+            pass
+
+        def ensure(self, hw, base):
+            contacted.append(base)
+            return base
+
+    monkeypatch.setattr("app.providers.ollama.provider.pull_model", lambda *a: None)
+    ctx, buf = make_ctx(workspace, ScriptedPrompter(False))
+    ctx.save_settings(Settings(ollama_base_url="http://203.0.113.5:11434"))
+    with pytest.raises(SetupAborted):
+        OllamaProvider(server_factory=Srv).run_setup(ctx, hardware(ram=8))
+    assert contacted == []
+    assert ctx.msg("remote.notice")[:20] in buf.getvalue()
+
+
 def _verify_with(workspace, monkeypatch, model):
     monkeypatch.setattr(OllamaProvider, "chat_model", lambda self, s, c: model)
     ctx, _ = make_ctx(workspace)

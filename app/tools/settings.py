@@ -42,9 +42,9 @@ def handle(ctx: ToolContext, inputs: SettingsInput) -> SettingsOutput:
     becomes_remote = candidate.is_remote() and (
         not current.is_remote()
         or candidate.provider != current.provider
-        or candidate.openai_base_url != current.openai_base_url
+        or candidate.endpoint_url() != current.endpoint_url()
     )
-    if becomes_remote and not confirm_data_notice(ctx):
+    if becomes_remote and not confirm_data_notice(ctx, candidate.endpoint_url()):
         raise ToolError(ctx.msg("settings.remote_declined"))
     changed = [k for k, v in candidate.model_dump().items() if v != current.model_dump()[k]]
     ctx.save_settings(candidate)

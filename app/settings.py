@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -11,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from app.providers.base import get_provider, provider_names
+from app.providers.hosts import is_http_url
 
 SETTINGS_FILE = "settings.json"
 
@@ -39,11 +41,19 @@ class Settings(BaseModel):
 
     @field_validator("ollama_base_url", "openai_base_url")
     @classmethod
-    def _strip_slash(cls, value: str | None) -> str | None:
-        return value.rstrip("/") if value else value
+    def _http_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not is_http_url(value):
+            raise ValueError(f"expected an http:// or https:// URL with a host, got {value!r}")
+        return value.strip().rstrip("/")
 
     def is_remote(self) -> bool:
         return self.provider is not None and get_provider(self.provider).is_remote(self)
+
+    def endpoint_url(self) -> str | None:
+        """The URL the configured provider's chat model talks to, if settings hold one."""
+        return get_provider(self.provider).endpoint_url(self) if self.provider else None
 
 
 def settings_path(workspace: Path) -> Path:
@@ -79,7 +89,13 @@ def load_settings(workspace: Path) -> Settings:
 
 
 def save_settings(workspace: Path, settings: Settings) -> None:
+    """Atomic write; the file is created with mode 0600 (only the user reads it)."""
     path = settings_path(workspace)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(settings.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=workspace, prefix=".settings.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(settings.model_dump_json(indent=2) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -24,12 +25,24 @@ def resolve_workspace(env: Mapping[str, str] | None = None) -> Path:
 
 
 def ensure_workspace(env: Mapping[str, str] | None = None) -> Path:
-    """Resolve the workspace and create it on first use."""
+    """Resolve the workspace and create it on first use with mode 0700.
+
+    An existing directory keeps its mode (the user chose it); the REPL warns
+    when it is open to other users (see `workspace_is_private`).
+    """
     path = resolve_workspace(env)
     try:
-        path.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.mkdir(mode=0o700)
+            path.chmod(0o700)
     except OSError as exc:
         raise WorkspaceError(f"cannot create workspace {path}: {exc.strerror or exc}") from exc
     if not path.is_dir():
         raise WorkspaceError(f"workspace {path} is not a directory")
     return path
+
+
+def workspace_is_private(path: Path) -> bool:
+    """True when neither group nor others have any access to the workspace."""
+    return not stat.S_IMODE(path.stat().st_mode) & 0o077

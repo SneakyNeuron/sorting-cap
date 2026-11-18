@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from app.settings import Settings, SettingsError, load_settings, save_settings, 
 from app.texts import Texts
 from app.tools.context import Choice, InteractivePrompter, ToolContext, ToolError
 from app.tools.registry import ParseError, Registry, parse_command, split_chat_line
-from app.workspace import WorkspaceError, ensure_workspace
+from app.workspace import WorkspaceError, ensure_workspace, workspace_is_private
 
 EXIT_COMMANDS = ("-exit",)
 HISTORY_FILE = ".history"
@@ -53,6 +54,13 @@ class DashCompleter(Completer):
                 yield Completion(candidate, start_position=-len(word))
 
 
+def private_file(path: Path) -> Path:
+    """Create `path` if missing and make it readable only by the user (0600)."""
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
+    path.chmod(0o600)
+    return path
+
+
 class Repl:
     def __init__(
         self,
@@ -75,7 +83,7 @@ class Repl:
         self.ctx_kwargs = ctx_kwargs or {}
         self.agent = ChatAgent(registry, self.make_ctx, model_factory)
         self.session: PromptSession[str] = PromptSession(
-            history=FileHistory(str(workspace / HISTORY_FILE)),
+            history=FileHistory(str(private_file(workspace / HISTORY_FILE))),
             completer=DashCompleter(registry.command_names),
             complete_while_typing=False,
         )
@@ -131,6 +139,8 @@ class Repl:
             self.error(str(exc))
             return
         self.say("repl.greeting", style="bold")
+        if not workspace_is_private(self.workspace):
+            self.say("repl.workspace_open", style="yellow", path=str(self.workspace))
         if settings.setup_completed_at is None:
             self.say("repl.setup_hint", style="yellow")
 

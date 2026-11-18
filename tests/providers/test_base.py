@@ -41,3 +41,8 @@ def test_is_remote_per_provider():
         provider="openai_compatible", openai_base_url="http://192.168.0.2:1234/v1"
     ).is_remote()
     assert not Settings().is_remote()
+
+
+def test_ollama_remote_unless_loopback():
+    assert not Settings(provider="ollama", ollama_base_url="http://[::1]:11434").is_remote()
+    assert Settings(provider="ollama", ollama_base_url="http://203.0.113.5:11434").is_remote()

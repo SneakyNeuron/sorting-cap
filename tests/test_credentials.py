@@ -1,4 +1,7 @@
+import os
 import stat
+
+import pytest
 
 from app.credentials import NOVITA_KEY, OPENAI_KEY, Credentials, mask
 
@@ -34,3 +37,31 @@ def test_missing_key_is_none(workspace):
 def test_mask():
     assert mask(None) == "—"
     assert "secret-value-123" not in mask("secret-value-123")
+
+
+@pytest.mark.parametrize("value", ["a\nOTHER=x", "a\rb", "a\x00b", "a\tb", ""])
+def test_set_rejects_control_characters_and_empty(workspace, value):
+    creds = Credentials(workspace, env={})
+    creds.set(OPENAI_KEY, "keep-me")
+    with pytest.raises(ValueError):
+        creds.set(NOVITA_KEY, value)
+    assert (workspace / ".env").read_text() == f"{OPENAI_KEY}=keep-me\n"
+
+
+def test_loose_existing_env_never_holds_key_with_old_mode(workspace, monkeypatch):
+    path = workspace / ".env"
+    path.write_text("# mine\n")
+    path.chmod(0o644)
+    seen = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(stat.S_IMODE(os.stat(src).st_mode))
+        real_replace(src, dst)
+
+    monkeypatch.setattr("app.credentials.os.replace", spy)
+    Credentials(workspace, env={}).set(NOVITA_KEY, "sk-secret-key-1")
+    assert seen == [0o600]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert path.read_text() == f"# mine\n{NOVITA_KEY}=sk-secret-key-1\n"
+    assert [p.name for p in workspace.iterdir()] == [".env"]

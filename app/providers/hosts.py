@@ -1,4 +1,4 @@
-"""Shared helper: does a URL point to this machine (loopback)?"""
+"""Shared URL helpers: loopback check, http(s) validation, cleartext check."""
 
 from __future__ import annotations
 
@@ -17,3 +17,20 @@ def is_loopback_url(url: str | None) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def is_http_url(url: str | None) -> bool:
+    """True for an `http://` or `https://` URL with a host."""
+    if not url:
+        return False
+    parts = urlsplit(url.strip())
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def is_cleartext_remote(url: str | None) -> bool:
+    """Plain `http://` to a host other than this machine: keys and prompts travel unencrypted."""
+    return bool(url) and urlsplit(url).scheme == "http" and not is_loopback_url(url)
+
+
+def host_of(url: str | None) -> str | None:
+    return urlsplit(url).hostname if url else None

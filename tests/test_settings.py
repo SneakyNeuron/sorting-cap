@@ -51,3 +51,17 @@ def test_invalid_file_fails_command_without_overwrite(workspace, capsys):
     assert run_headless(["settings", "--language", "en"]) == 1
     assert "tour_shown" in capsys.readouterr().err
     assert settings_path(workspace).read_text() == '{"tour_shown": "maybe"}'
+
+
+@pytest.mark.parametrize("field", ["ollama_base_url", "openai_base_url"])
+@pytest.mark.parametrize("url", ["localhost:11434", "ftp://host/v1", "http://", "file:///x"])
+def test_base_urls_need_http_scheme_and_host(field, url):
+    with pytest.raises(ValueError, match=field):
+        Settings(**{field: url})
+
+
+def test_settings_file_written_0600(workspace):
+    import stat
+
+    save_settings(workspace, Settings())
+    assert stat.S_IMODE(settings_path(workspace).stat().st_mode) == 0o600

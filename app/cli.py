@@ -2,20 +2,32 @@
 
 import os
 
-# T15: tracing is always off. Set before anything imports langchain or langsmith,
-# because langsmith caches its environment lookups.
-os.environ["LANGSMITH_TRACING"] = "false"
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ.pop("LANGSMITH_GATEWAY", None)
+# T15: LangSmith tracing is always off. langsmith resolves
+# `get_env_var("TRACING_V2", default=get_env_var("TRACING"))` over the
+# `LANGSMITH_` then `LANGCHAIN_` namespaces, so all four names are forced.
+TRACING_VARS = (
+    "LANGSMITH_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING_V2",
+    "LANGCHAIN_TRACING",
+)
+
+
+def disable_tracing() -> None:
+    """Force tracing off in this process; must run before langchain/langsmith import.
+
+    langsmith caches its environment lookups, so this runs at module import.
+    """
+    for name in TRACING_VARS:
+        os.environ[name] = "false"
+    os.environ.pop("LANGSMITH_GATEWAY", None)
+
+
+disable_tracing()
 
 import sys  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
 from importlib.metadata import version  # noqa: E402
-
-
-def disable_tracing() -> None:
-    os.environ["LANGSMITH_TRACING"] = "false"
-    os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 
 def package_version() -> str:
@@ -23,7 +35,6 @@ def package_version() -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    disable_tracing()
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] in (["--version"], ["-V"]):
         print(f"sortingcap {package_version()}")

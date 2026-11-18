@@ -40,6 +40,46 @@ def test_lan_host_gets_notice_and_key_saved(workspace):
     assert Credentials(workspace, {}).get(OPENAI_KEY) == "lan-key-123456"
 
 
+def test_lan_http_warns_cleartext_https_does_not(workspace):
+    ctx, buf = make_ctx(workspace, ScriptedPrompter("http://192.168.1.10:8000/v1", False))
+    with pytest.raises(SetupAborted):
+        OpenAICompatibleProvider().run_setup(ctx, hardware())
+    assert ctx.msg("remote.cleartext")[:20] in buf.getvalue()
+    ctx, buf = make_ctx(workspace, ScriptedPrompter("https://api.example.com/v1", False))
+    with pytest.raises(SetupAborted):
+        OpenAICompatibleProvider().run_setup(ctx, hardware())
+    assert ctx.msg("remote.cleartext")[:20] not in buf.getvalue()
+
+
+def test_new_host_prompt_says_stored_key_goes_there(workspace):
+    from app.settings import save_settings
+
+    save_settings(
+        workspace, Settings(provider="openai_compatible", openai_base_url="https://a.example/v1")
+    )
+    Credentials(workspace, {}).set(OPENAI_KEY, "old-key-123456")
+    prompter = ScriptedPrompter("https://b.example/v1", True, "", "m")
+    ctx, _ = make_ctx(workspace, prompter)
+    OpenAICompatibleProvider().run_setup(ctx, hardware())
+    secret_q = next(q for k, q, *_ in prompter.asked if k == "secret")
+    assert "b.example" in secret_q
+    assert secret_q == ctx.msg("remote.key_prompt_keep_host", name=OPENAI_KEY, host="b.example")
+
+
+def test_same_host_prompt_keeps_plain_wording(workspace):
+    from app.settings import save_settings
+
+    save_settings(
+        workspace, Settings(provider="openai_compatible", openai_base_url="https://a.example/v1")
+    )
+    Credentials(workspace, {}).set(OPENAI_KEY, "old-key-123456")
+    prompter = ScriptedPrompter("https://a.example/v2", True, "", "m")
+    ctx, _ = make_ctx(workspace, prompter)
+    OpenAICompatibleProvider().run_setup(ctx, hardware())
+    secret_q = next(q for k, q, *_ in prompter.asked if k == "secret")
+    assert secret_q == ctx.msg("remote.key_prompt_keep", name=OPENAI_KEY)
+
+
 def test_declined_notice(workspace):
     ctx, _ = make_ctx(workspace, ScriptedPrompter("https://api.example.com/v1", False))
     with pytest.raises(SetupAborted):

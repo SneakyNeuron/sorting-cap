@@ -150,6 +150,25 @@ def test_history_written(workspace, registry):
     assert "-stub --value 9" in (workspace / ".history").read_text()
 
 
+def test_history_file_is_0600(workspace, registry):
+    import stat
+
+    (workspace / ".history").write_text("")
+    (workspace / ".history").chmod(0o644)
+    drive(workspace, "-stub\r-exit\r", registry=registry)
+    assert stat.S_IMODE((workspace / ".history").stat().st_mode) == 0o600
+
+
+def test_open_workspace_warned_private_not(workspace, registry):
+    workspace.chmod(0o755)
+    _, out, repl = drive(workspace, "-exit\r", registry=registry)
+    warning = repl.texts().message("repl.workspace_open", path=str(workspace))
+    assert warning[:30] in out.replace("\n", " ")
+    workspace.chmod(0o700)
+    _, out, _ = drive(workspace, "-exit\r", registry=registry)
+    assert warning[:30] not in out.replace("\n", " ")
+
+
 def test_hidden_input_not_in_history(workspace, registry):
     drive(workspace, "-stub --action secret\rtop-secret-key\r-exit\r", registry=registry)
     assert "top-secret-key" not in (workspace / ".history").read_text()

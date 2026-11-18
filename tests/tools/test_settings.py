@@ -89,3 +89,33 @@ def test_headless_remote_without_yes_denied(workspace):
         == 0
     )
     assert json.loads(out.getvalue())["settings"]["provider"] == "novita"
+
+
+def test_remote_ollama_url_needs_notice(workspace):
+    save_settings(workspace, Settings(provider="ollama", model="x"))
+    ctx, buf = make_ctx(workspace, ScriptedPrompter(False))
+    with pytest.raises(ToolError):
+        handle(ctx, SettingsInput(ollama_base_url="http://203.0.113.5:11434"))
+    assert load_settings(workspace).ollama_base_url == "http://localhost:11434"
+    assert ctx.msg("remote.cleartext") in buf.getvalue().replace("\n", " ")
+    ctx, _ = make_ctx(workspace, ScriptedPrompter(True))
+    handle(ctx, SettingsInput(ollama_base_url="http://203.0.113.5:11434"))
+    assert load_settings(workspace).ollama_base_url == "http://203.0.113.5:11434"
+
+
+def test_https_remote_url_has_no_cleartext_warning(workspace):
+    ctx, buf = make_ctx(workspace, ScriptedPrompter(True))
+    handle(
+        ctx,
+        SettingsInput(
+            provider="openai_compatible", openai_base_url="https://api.example.com/v1", model="m"
+        ),
+    )
+    assert ctx.msg("remote.cleartext") not in buf.getvalue().replace("\n", " ")
+
+
+def test_url_without_scheme_rejected(workspace):
+    ctx, _ = make_ctx(workspace)
+    with pytest.raises(ToolError, match="ollama_base_url"):
+        handle(ctx, SettingsInput(ollama_base_url="localhost:11434"))
+    assert not (workspace / "settings.json").exists()

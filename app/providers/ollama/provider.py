@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from app.providers.base import Availability, Provider, SetupAborted, SetupResult
+from app.providers.hosts import is_loopback_url
 from app.providers.ollama.pull import pull_model
 from app.providers.ollama.server import OllamaServer
 from app.providers.ollama.tiers import fitting_tiers, preselected_tier
+from app.providers.remote import require_data_notice
 from app.providers.verify import verify_chat_model
 from app.tools.context import Choice
 
@@ -21,7 +23,11 @@ class OllamaProvider(Provider):
         self.server_factory = server_factory
 
     def is_remote(self, settings) -> bool:
-        return False
+        """Local by default; an `ollama_base_url` on another host is remote (R10)."""
+        return not is_loopback_url(settings.ollama_base_url)
+
+    def endpoint_url(self, settings) -> str | None:
+        return settings.ollama_base_url
 
     def availability(self, hardware) -> Availability:
         tiers = fitting_tiers(hardware)
@@ -54,6 +60,8 @@ class OllamaProvider(Provider):
         return pick
 
     def run_setup(self, ctx, hardware) -> SetupResult:
+        if not is_loopback_url(ctx.settings.ollama_base_url):
+            require_data_notice(ctx, ctx.settings.ollama_base_url)
         base_url = self.server_factory(ctx).ensure(hardware, ctx.settings.ollama_base_url)
         tag = self.choose_tier(ctx, hardware)
         pull_model(ctx, base_url, tag)

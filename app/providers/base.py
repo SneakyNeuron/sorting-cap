@@ -53,6 +53,10 @@ class Provider(ABC):
     @abstractmethod
     def is_remote(self, settings: Settings) -> bool: ...
 
+    def endpoint_url(self, settings: Settings) -> str | None:
+        """The user-configurable URL this provider talks to (None for a fixed service)."""
+        return None
+
     @abstractmethod
     def availability(self, hardware: Hardware) -> Availability: ...
 

@@ -6,6 +6,7 @@ Keys are never written to `settings.json`, logs, output or the REPL history.
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,7 +64,15 @@ class Credentials:
         return self._file_values().get(name) or None
 
     def set(self, name: str, value: str) -> None:
-        """Create or update `.env` with mode 0600, keeping other lines."""
+        """Create or update `.env` with mode 0600, keeping other lines.
+
+        Values with control characters (newlines included) are refused, so a
+        pasted value cannot add or override other lines. The new content goes to
+        a temporary file created with mode 0600 and replaces `.env` atomically,
+        so the key is never written into a file with looser permissions.
+        """
+        if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError(f"{name}: empty value or control characters")
         path = self.env_file
         lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
         out, replaced = [], False
@@ -77,7 +86,11 @@ class Credentials:
             out.append(line)
         if not replaced:
             out.append(f"{name}={value}")
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(out) + "\n")
-        os.chmod(path, 0o600)
+        fd, tmp = tempfile.mkstemp(dir=self.workspace, prefix=".env.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(out) + "\n")
+            os.replace(tmp, path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise

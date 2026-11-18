@@ -74,13 +74,13 @@ uv run sortingcap run settings --language en --yes
 
 ## Workspace
 
-Everything the cap keeps about you is in plain files in one directory, by default `~/SortingCap`. Set `SORTINGCAP_WORKSPACE` **in your shell** to move it.
+Everything the cap keeps about you is in plain files in one directory, by default `~/SortingCap`, created readable only by you (mode 0700). Set `SORTINGCAP_WORKSPACE` **in your shell** to move it.
 
 | File | Contents |
 |---|---|
 | `settings.json` | Language, provider, model, URLs. Hand edits apply on the next command; an invalid file is reported, never overwritten |
 | `.env` | Remote API keys (`NOVITA_API_KEY`, `SORTINGCAP_OPENAI_API_KEY`), mode 0600. Environment variables with the same names win. See `.env.example` — copy it to `<workspace>/.env`, not to the repository |
-| `.history` | Chat input history (hidden key input is never stored) |
+| `.history` | Chat input history, mode 0600 (hidden key input is never stored) |
 | `logs/setup.log` | Every command `-setup` ran, with its exit code |
 
 LangSmith tracing is always off.

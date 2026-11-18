@@ -1,3 +1,5 @@
+import stat
+
 import pytest
 
 from app.workspace import WorkspaceError, ensure_workspace, resolve_workspace
@@ -17,6 +19,20 @@ def test_created_on_first_use(tmp_path):
     env = {"HOME": str(tmp_path)}
     path = ensure_workspace(env)
     assert path.is_dir()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700
+
+
+def test_existing_workspace_mode_left_alone(tmp_path):
+    from app.workspace import workspace_is_private
+
+    path = tmp_path / "ws"
+    path.mkdir()
+    path.chmod(0o755)
+    assert ensure_workspace({"SORTINGCAP_WORKSPACE": str(path)}) == path
+    assert stat.S_IMODE(path.stat().st_mode) == 0o755
+    assert not workspace_is_private(path)
+    path.chmod(0o700)
+    assert workspace_is_private(path)
 
 
 def test_uncreatable_path(tmp_path):

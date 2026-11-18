@@ -6,19 +6,16 @@ client appends `/chat/completions`. A loopback host counts as local.
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit
-
 from app.credentials import OPENAI_KEY
 from app.providers.base import Availability, Provider, SetupResult
-from app.providers.hosts import is_loopback_url
+from app.providers.hosts import host_of, is_http_url, is_loopback_url
 from app.providers.openai_api import openai_compatible_model
 from app.providers.remote import ask_key, require_data_notice
 from app.providers.verify import verify_chat_model
 
 
 def validate_base_url(url: str) -> bool:
-    parts = urlsplit(url.strip())
-    return parts.scheme in ("http", "https") and bool(parts.hostname)
+    return is_http_url(url)
 
 
 class OpenAICompatibleProvider(Provider):
@@ -27,6 +24,9 @@ class OpenAICompatibleProvider(Provider):
 
     def is_remote(self, settings) -> bool:
         return not is_loopback_url(settings.openai_base_url)
+
+    def endpoint_url(self, settings) -> str | None:
+        return settings.openai_base_url
 
     def availability(self, hardware) -> Availability:
         return Availability(True)
@@ -42,8 +42,10 @@ class OpenAICompatibleProvider(Provider):
             .rstrip("/")
         )
         if not is_loopback_url(url):
-            require_data_notice(ctx)
-        ask_key(ctx, OPENAI_KEY, optional=True)
+            require_data_notice(ctx, url)
+        previous = ctx.settings.openai_base_url
+        new_host = host_of(url) if host_of(url) != host_of(previous) else None
+        ask_key(ctx, OPENAI_KEY, optional=True, new_host=new_host)
         model = ctx.text(
             ctx.msg("openai.model_prompt"),
             default=ctx.settings.model if ctx.settings.provider == self.name else None,
