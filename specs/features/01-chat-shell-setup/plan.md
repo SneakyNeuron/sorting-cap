@@ -78,13 +78,13 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - [x] Tests (with fake providers): language saved immediately; menu reflects availability; nothing preselected when local is unavailable; the no-fit message; failure returns to the menu; quit leaves setup incomplete; success saves settings; tour shown only once; re-run path; `sortingcap run setup` refused with exit 2; command runner logs and masks nothing secret
 
 ## Group 8: Local provider part 1: Ollama detection, start and install
-- [ ] `app/providers/ollama/server.py`: detect a running Ollama (`GET /api/version` at `ollama_base_url`), something else answering on the port, an installed but stopped binary, an existing but stopped `ollama` Docker container, or nothing
-- [ ] Start: stopped binary → offer `ollama serve` detached (runner detached mode), or `sudo systemctl start ollama` when a systemd unit exists; stopped container → offer `docker start ollama`
-- [ ] Install, each after an explicit yes that shows the exact command (T6): (a) Docker: run the `ollama/ollama` container with a named volume, the port bound to `127.0.0.1` only, and `--gpus=all` when the GPU toolkit is present; (b) native: run the official install script in the runner's interactive mode (it uses sudo; the user's own sudo prompt is shown in the terminal). The default offered is Docker when available, native otherwise
-- [ ] Port taken by something that is not Ollama → offer the next free port for the Docker container and save it as `ollama_base_url`
-- [ ] After install or start, poll until the server answers or a timeout passes, then report
-- [ ] All commands go through `app/setup/runner.py`
-- [ ] Tests: each detection outcome; start (binary, systemd, container), Docker (with and without GPU, other port, port bound to `127.0.0.1`) and native paths with faked commands and HTTP; "no" at each confirmation returns to the menu; `docker` permission error message; timeout path
+- [x] `app/providers/ollama/server.py`: detect a running Ollama (`GET /api/version` at `ollama_base_url`), something else answering on the port, an installed but stopped binary, an existing but stopped `ollama` Docker container, or nothing
+- [x] Start: stopped binary → offer `ollama serve` detached (runner detached mode), or `sudo systemctl start ollama` when a systemd unit exists; stopped container → offer `docker start ollama`
+- [x] Install, each after an explicit yes that shows the exact command (T6): (a) Docker: run the `ollama/ollama` container with a named volume, the port bound to `127.0.0.1` only, and `--gpus=all` when the GPU toolkit is present; (b) native: run the official install script in the runner's interactive mode (it uses sudo; the user's own sudo prompt is shown in the terminal). The default offered is Docker when available, native otherwise
+- [x] Port taken by something that is not Ollama → offer the next free port for the Docker container and save it as `ollama_base_url`
+- [x] After install or start, poll until the server answers or a timeout passes, then report
+- [x] All commands go through `app/setup/runner.py`
+- [x] Tests: each detection outcome; start (binary, systemd, container), Docker (with and without GPU, other port, port bound to `127.0.0.1`) and native paths with faked commands and HTTP; "no" at each confirmation returns to the menu; `docker` permission error message; timeout path
 
 ## Group 9: Local provider part 2: model tiers, pull and verification
 - [ ] `app/providers/ollama/tiers.py`: model tiers from T5: `availability` reports the tiers that fit the detected RAM/VRAM (none → unavailable); `-setup` lists every fitting tier with the best one (T5 selection rule: GPU-fit first, lowest `#`) marked and preselected, and the user picks
