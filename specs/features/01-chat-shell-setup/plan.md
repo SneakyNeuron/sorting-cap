@@ -87,10 +87,10 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - [x] Tests: each detection outcome; start (binary, systemd, container), Docker (with and without GPU, other port, port bound to `127.0.0.1`) and native paths with faked commands and HTTP; "no" at each confirmation returns to the menu; `docker` permission error message; timeout path
 
 ## Group 9: Local provider part 2: model tiers, pull and verification
-- [ ] `app/providers/ollama/tiers.py`: model tiers from T5: `availability` reports the tiers that fit the detected RAM/VRAM (none → unavailable); `-setup` lists every fitting tier with the best one (T5 selection rule: GPU-fit first, lowest `#`) marked and preselected, and the user picks
-- [ ] Pull with a rich progress bar from the `POST /api/pull` stream; skip when the model is already in `GET /api/tags`
-- [ ] `verify`: a short chat answer plus one tool-call round trip through the agent with the real model; a model without tool calling fails with that reason and the user may pick another tier
-- [ ] Tests: tier selection per hardware profile (including none fitting); pull skip and progress; interrupted pull reported; verification pass/fail with a fake model
+- [x] `app/providers/ollama/tiers.py`: model tiers from T5: `availability` reports the tiers that fit the detected RAM/VRAM (none → unavailable); `-setup` lists every fitting tier with the best one (T5 selection rule: GPU-fit first, lowest `#`) marked and preselected, and the user picks
+- [x] Pull with a rich progress bar from the `POST /api/pull` stream; skip when the model is already in `GET /api/tags`
+- [x] `verify`: a short chat answer plus one tool-call round trip through the agent with the real model; a model without tool calling fails with that reason and the user may pick another tier
+- [x] Tests: tier selection per hardware profile (including none fitting); pull skip and progress; interrupted pull reported; verification pass/fail with a fake model
 
 ## Group 10: Remote providers: Novita and any OpenAI-compatible endpoint
 - [ ] `app/providers/remote.py`, shared remote step: explain that prompts and data leave the machine (declining returns to the menu); keys are entered with hidden input that never reaches the REPL history, and stored in `<workspace>/.env` (0600)
