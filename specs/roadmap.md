@@ -3,6 +3,7 @@
 Phases are medium-sized by choice. Each is planned with `/sdd:feature`, built with `/sdd:implement` in task groups, and closed with `/sdd:validate`.
 
 ## Phase 1: Chat shell, tool registry and setup
+Spec: specs/features/01-chat-shell-setup/
 Goal: a user can install the app with uv, run a guided `-setup` that gets a local LLM working, and get the app tour, all from the terminal chat.
 - [ ] Scaffold with uv (`pyproject.toml`, `uv.lock`, Python 3.12); `.gitignore` (including `.env`) and `.env.example` for the optional remote-provider key; ruff config; CI running ruff and pytest
 - [ ] Tool registry with Pydantic inputs/outputs, exposed as dash-commands, as agent tools and through the headless runner `sortingcap run <command>`
