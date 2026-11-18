@@ -20,6 +20,7 @@ def validate_base_url(url: str) -> bool:
 
 class OpenAICompatibleProvider(Provider):
     name = "openai_compatible"
+    key_name = OPENAI_KEY
     label_key = "provider.openai_compatible.label"
 
     def is_remote(self, settings) -> bool:

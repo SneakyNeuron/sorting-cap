@@ -36,3 +36,13 @@ def test_interactive_inherits_terminal(workspace):
         [sys.executable, "-c", "raise SystemExit(0)"], mode="interactive"
     )
     assert result.ok and result.stdout == ""
+
+
+def test_extra_env_reaches_the_command_and_the_log(workspace):
+    runner = CommandRunner(workspace)
+    result = runner.run(
+        [sys.executable, "-c", "import os; print(os.environ['OLLAMA_HOST'])"],
+        env={"OLLAMA_HOST": "127.0.0.1:11435"},
+    )
+    assert result.stdout.strip() == "127.0.0.1:11435"
+    assert "OLLAMA_HOST=127.0.0.1:11435 " in (workspace / "logs" / "setup.log").read_text()

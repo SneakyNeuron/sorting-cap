@@ -2,6 +2,7 @@ import os
 import stat
 
 import pytest
+from helpers import make_ctx
 
 from app.credentials import NOVITA_KEY, OPENAI_KEY, Credentials, mask
 
@@ -65,3 +66,13 @@ def test_loose_existing_env_never_holds_key_with_old_mode(workspace, monkeypatch
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert path.read_text() == f"# mine\n{NOVITA_KEY}=sk-secret-key-1\n"
     assert [p.name for p in workspace.iterdir()] == [".env"]
+
+
+def test_repr_never_shows_keys(workspace):
+    creds = Credentials(workspace, env={NOVITA_KEY: "sk-env-secret-1"}, overrides={OPENAI_KEY: "x"})
+    assert "sk-env-secret-1" not in repr(creds)
+    ctx, _ = make_ctx(workspace, env={NOVITA_KEY: "sk-env-secret-1"})
+    ctx.pending_keys[OPENAI_KEY] = "sk-typed-secret-2"
+    assert "sk-env-secret-1" not in repr(ctx)
+    assert "sk-typed-secret-2" not in repr(ctx)
+    assert "sk-env-secret-1" not in repr(ctx.credentials)

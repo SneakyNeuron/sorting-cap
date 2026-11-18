@@ -151,11 +151,13 @@ class ToolContext:
     console: Console
     registry: Registry
     prompter: Prompter | None = None
-    env: Mapping[str, str] | None = None
+    env: Mapping[str, str] | None = field(default=None, repr=False)  # may hold real keys
     interactive: bool = False
     runner_factory: Callable[[ToolContext], CommandRunner] | None = None
     http_transport: httpx.BaseTransport | None = None
     settings: Settings = field(init=False)
+    # keys typed during `-setup`, used for verification, written to `.env` only after it
+    pending_keys: dict[str, str] = field(default_factory=dict, init=False, repr=False)
     _runner: CommandRunner | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -169,7 +171,7 @@ class ToolContext:
 
     @property
     def credentials(self) -> Credentials:
-        return Credentials(self.workspace, self.env)
+        return Credentials(self.workspace, self.env, self.pending_keys)
 
     @property
     def runner(self) -> CommandRunner:

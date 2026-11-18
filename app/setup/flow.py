@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from app.errors import validation_message
 from app.providers.base import Provider, SetupAborted, providers
+from app.providers.remote import save_pending_keys
 from app.schemas.setup import SetupInput, SetupOutput
 from app.settings import Settings
 from app.setup.hardware import Hardware, detect
@@ -85,6 +86,13 @@ def _show_tour_once(ctx: ToolContext) -> None:
 
 
 def handle(ctx: ToolContext, inputs: SetupInput) -> SetupOutput:
+    try:
+        return _run(ctx)
+    finally:
+        ctx.pending_keys.clear()  # unverified keys never outlive the setup run
+
+
+def _run(ctx: ToolContext) -> SetupOutput:
     _choose_language(ctx)
     hw = detect_hardware(ctx)
     _hardware_summary(ctx, hw)
@@ -96,6 +104,7 @@ def handle(ctx: ToolContext, inputs: SetupInput) -> SetupOutput:
         if pick == QUIT:
             return SetupOutput(completed=False)
         provider = next(p for p in available_providers() if p.name == pick)
+        ctx.pending_keys.clear()
         try:
             result = provider.run_setup(ctx, hw)
             try:
@@ -114,10 +123,12 @@ def handle(ctx: ToolContext, inputs: SetupInput) -> SetupOutput:
             ctx.say("setup.verifying", provider=ctx.msg(provider.label_key), model=result.model)
             provider.verify(ctx, candidate)
         except SetupAborted as exc:
+            ctx.pending_keys.clear()
             ctx.console.print(exc.message, style="red", highlight=False, markup=False)
             ctx.say("setup.back_to_menu")
             continue
         candidate = candidate.model_copy(update={"setup_completed_at": datetime.now(UTC)})
+        save_pending_keys(ctx)
         ctx.save_settings(candidate)
         ctx.say("setup.verified", style="green")
         _show_tour_once(ctx)

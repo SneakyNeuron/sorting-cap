@@ -26,6 +26,7 @@ def function_calling_models(payload: dict) -> list[str]:
 
 class NovitaProvider(Provider):
     name = "novita"
+    key_name = NOVITA_KEY
     label_key = "provider.novita.label"
     base_url = NOVITA_BASE_URL
 

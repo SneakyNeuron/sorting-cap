@@ -32,12 +32,13 @@ def test_loopback_skips_notice_and_key_optional(workspace):
     assert Credentials(workspace, {}).get(OPENAI_KEY) is None
 
 
-def test_lan_host_gets_notice_and_key_saved(workspace):
+def test_lan_host_gets_notice_and_key_held_until_verified(workspace):
     prompter = ScriptedPrompter("http://192.168.1.10:8000/v1", True, "lan-key-123456", "m")
     ctx, _ = make_ctx(workspace, prompter)
     OpenAICompatibleProvider().run_setup(ctx, hardware())
     assert [k for k, *_ in prompter.asked] == ["text", "confirm", "secret", "text"]
-    assert Credentials(workspace, {}).get(OPENAI_KEY) == "lan-key-123456"
+    assert ctx.credentials.get(OPENAI_KEY) == "lan-key-123456"  # used for verification
+    assert Credentials(workspace, {}).get(OPENAI_KEY) is None  # not written yet
 
 
 def test_lan_http_warns_cleartext_https_does_not(workspace):
@@ -117,3 +118,14 @@ def test_endpoint_without_routes_fails_verification(workspace):
     ctx, _ = make_ctx(workspace)
     with pytest.raises(SetupAborted):
         verify_chat_model(ctx, model, "Custom")
+
+
+def test_env_key_skips_prompt_and_says_so(workspace):
+    prompter = ScriptedPrompter("https://api.example.com/v1", True, "m")
+    ctx, buf = make_ctx(workspace, prompter, env={OPENAI_KEY: "env-key-123456"})
+    OpenAICompatibleProvider().run_setup(ctx, hardware())
+    assert [k for k, *_ in prompter.asked] == ["text", "confirm", "text"]
+    assert ctx.msg("remote.key_from_env_host", name=OPENAI_KEY, host="api.example.com") in (
+        " ".join(buf.getvalue().split())
+    )
+    assert "env-key-123456" not in buf.getvalue()

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from helpers import FakeRunner, ScriptedPrompter, hardware, make_ctx
@@ -205,3 +207,177 @@ def test_ready_timeout(workspace):
     with pytest.raises(SetupAborted) as exc:
         srv.ensure(hardware(), BASE)
     assert "3" in exc.value.message
+
+
+class Docker:
+    """A stateful fake Docker with at most one `ollama` container."""
+
+    def __init__(self, state=None, port=None):
+        self.state, self.port = state, port
+        self.runs = 0
+
+    def __call__(self, args, mode):
+        if args[:3] == ["docker", "container", "inspect"]:
+            if self.state is None:
+                return CommandResult(1, "", "Error: No such container: ollama")
+            bindings = (
+                {"11434/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(self.port)}]}
+                if self.port
+                else {}
+            )
+            return CommandResult(0, f"{self.state} {json.dumps(bindings)}\n")
+        if args[:2] == ["docker", "run"]:
+            if self.state is not None:
+                return CommandResult(125, "", 'Conflict. The container name "/ollama" is in use')
+            self.runs += 1
+            self.state = "running"
+            self.port = int(args[args.index("-p") + 1].split(":")[1])
+            return CommandResult(0, "abc123\n")
+        if args == ["docker", "start", "ollama"]:
+            self.state = "running"
+            return CommandResult(0, "ollama\n")
+        return CommandResult(0, "")
+
+
+def docker_http(docker, taken=11434, pulls=None):
+    """11434 is taken by something else; the container's port answers while it runs."""
+
+    def handler(request):
+        port = request.url.port
+        if port == taken:
+            return httpx.Response(404, text="nginx")
+        if docker.state != "running" or port != docker.port:
+            raise httpx.ConnectError("refused", request=request)
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": "0.13.0"})
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": []})
+        outcome = pulls.pop(0) if pulls else "ok"
+        if outcome == "fail":
+            return httpx.Response(200, content=b'{"error": "network down"}\n')
+        return httpx.Response(200, content=b'{"status": "success"}\n')
+
+    return handler
+
+
+def docker_server(workspace, docker, http, prompter):
+    runner = FakeRunner(docker)
+    srv, ctx, buf = server(
+        workspace,
+        http,
+        prompter,
+        runner,
+        which=lambda n: "/usr/bin/docker" if n == "docker" else None,
+        free=lambda p: p >= 11435,
+    )
+    return srv, ctx, buf, runner
+
+
+def test_retry_after_failed_pull_on_alternate_port_reuses_container(workspace):
+    from app.providers.ollama.provider import OllamaProvider
+
+    docker = Docker()
+    http = docker_http(docker, pulls=["fail", "ok"])
+    tag = "qwen3.5:4b-q4_K_M"
+    # first round: docker run on 11435, then the pull fails; second round: no new docker run
+    prompter = ScriptedPrompter(True, tag, tag)
+    srv, ctx, buf, runner = docker_server(workspace, docker, http, prompter)
+    provider = OllamaProvider(server_factory=lambda c: srv)
+    with pytest.raises(SetupAborted):
+        provider.run_setup(ctx, hardware(ram=8))
+    assert ctx.settings.ollama_base_url == BASE  # nothing saved after the failure
+    result = provider.run_setup(ctx, hardware(ram=8))
+    assert result.updates == {"ollama_base_url": "http://localhost:11435"}
+    assert docker.runs == 1
+    assert [c for c, _ in runner.calls if c[:2] == ["docker", "run"]] == [docker_run_command(11435)]
+    assert ctx.msg("ollama.container_running", url="http://localhost:11435") in buf.getvalue()
+
+
+def test_port_taken_stopped_container_on_other_port_is_started(workspace):
+    docker = Docker("exited", 11435)
+    srv, *_, runner = docker_server(workspace, docker, docker_http(docker), ScriptedPrompter(True))
+    assert srv.ensure(hardware(), BASE) == "http://localhost:11435"
+    assert ["docker", "start", "ollama"] in [c for c, _ in runner.calls]
+    assert docker.runs == 0
+
+
+def test_port_taken_container_without_free_port_fails_clearly(workspace):
+    for port in (None, 11434):
+        docker = Docker("exited", port)
+        srv, ctx, _, runner = docker_server(workspace, docker, docker_http(docker), None)
+        with pytest.raises(SetupAborted) as exc:
+            srv.ensure(hardware(), BASE)
+        assert exc.value.message == ctx.msg("ollama.container_conflict")
+        assert all(c[:2] not in (["docker", "run"], ["docker", "start"]) for c, _ in runner.calls)
+
+
+def test_down_url_with_container_on_other_port_uses_that_port(workspace):
+    docker = Docker("running", 11435)
+
+    def http(request):
+        if request.url.port == 11435:
+            return httpx.Response(200, json={"version": "0.13.0"})
+        raise httpx.ConnectError("refused", request=request)
+
+    srv, *_ = docker_server(workspace, docker, http, None)
+    assert srv.ensure(hardware(), BASE) == "http://localhost:11435"
+
+
+def test_parse_container():
+    from app.providers.ollama.server import Container, parse_container
+
+    assert parse_container("") is None
+    assert parse_container("exited null") == Container("exited", None)
+    assert parse_container(
+        'running {"11434/tcp":[{"HostIp":"127.0.0.1","HostPort":"11436"}]}'
+    ) == Container("running", 11436)
+
+
+@pytest.mark.parametrize(
+    ("url", "host"),
+    [
+        ("http://localhost:11434", "127.0.0.1:11434"),
+        ("http://localhost:11435", "127.0.0.1:11435"),
+        ("http://127.0.0.2", "127.0.0.2:11434"),
+        ("http://[::1]:11500", "[::1]:11500"),
+    ],
+)
+def test_ollama_serve_listens_on_the_configured_port(workspace, url, host):
+    from app.providers.ollama.server import ollama_host
+
+    assert ollama_host(url) == host
+    runner = FakeRunner(lambda a, m: CommandResult(0, ""))
+    srv, ctx, buf = server(
+        workspace,
+        Http("down", "up"),
+        ScriptedPrompter(True),
+        runner,
+        which=lambda n: "/usr/bin/ollama" if n == "ollama" else None,
+    )
+    assert srv.ensure(hardware(), url) == url
+    i = runner.calls.index((["ollama", "serve"], "detached"))
+    assert runner.envs[i] == {"OLLAMA_HOST": host}
+    assert f"$ OLLAMA_HOST={host} ollama serve" in buf.getvalue()
+
+
+@pytest.mark.parametrize("state", ["down", "other"])
+def test_remote_url_not_answering_never_offers_local_install(workspace, state):
+    runner = FakeRunner()
+    prompter = ScriptedPrompter()
+    srv, ctx, _ = server(
+        workspace,
+        Http(state),
+        prompter,
+        runner,
+        which=lambda n: f"/usr/bin/{n}",
+    )
+    url = "http://192.168.1.20:11434"
+    with pytest.raises(SetupAborted) as exc:
+        srv.ensure(hardware(), url)
+    assert exc.value.message == ctx.msg("ollama.remote_unreachable", url=url)
+    assert runner.calls == [] and prompter.asked == []
+
+
+def test_remote_url_running_is_used(workspace):
+    srv, *_ = server(workspace, Http("up"))
+    assert srv.ensure(hardware(), "http://192.168.1.20:11434") == "http://192.168.1.20:11434"

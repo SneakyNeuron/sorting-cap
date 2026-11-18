@@ -6,6 +6,7 @@ turn, so rebuilding the agent after a settings change keeps the history.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -97,13 +98,17 @@ class ChatAgent:
         self.tool_names: list[str] = []
 
     @staticmethod
-    def _settings_key(settings: Settings) -> tuple:
+    def _settings_key(settings: Settings, credentials: Credentials) -> tuple:
+        """What the built agent depends on; the provider's key only as a SHA-256 digest."""
+        key_name = get_provider(settings.provider).key_name if settings.provider else None
+        key = credentials.get(key_name) if key_name else None
         return (
             settings.provider,
             settings.model,
             settings.language,
             settings.ollama_base_url,
             settings.openai_base_url,
+            hashlib.sha256(key.encode()).hexdigest() if key else None,
         )
 
     def _build(self, settings: Settings, credentials: Credentials) -> None:
@@ -117,7 +122,7 @@ class ChatAgent:
             tools=tools,
             system_prompt=texts.prompt("chat", "system"),
         )
-        self._key = self._settings_key(settings)
+        self._key = self._settings_key(settings, credentials)
         self.builds += 1
 
     def ask(self, text: str, settings: Settings, credentials: Credentials) -> Reply:
@@ -125,7 +130,7 @@ class ChatAgent:
 
         if not settings.provider or not settings.model:
             raise NoModelConfigured
-        if self._agent is None or self._settings_key(settings) != self._key:
+        if self._agent is None or self._settings_key(settings, credentials) != self._key:
             self._build(settings, credentials)
         result = self._agent.invoke({"messages": [*self.history, HumanMessage(text)]})
         messages = result["messages"]

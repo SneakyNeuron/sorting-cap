@@ -199,3 +199,68 @@ def test_invalid_setup_result_shows_short_validation_message(workspace, fakes):
     assert out.completed is False
     assert "Cannot save the setup: ollama_base_url: expected an http:// or https:// URL" in text
     assert "x[/y]" in text and "pydantic" not in text and "input_value" not in text
+
+
+@pytest.fixture
+def novita_only(monkeypatch):
+    """Real Novita setup; its chat model works only with the key `good-key-123`."""
+    import httpx
+    from helpers import fake_model, tool_call
+
+    from app.credentials import NOVITA_KEY
+    from app.providers.novita import NovitaProvider
+
+    class Broken(type(fake_model())):
+        def _generate(self, *a, **k):
+            raise RuntimeError("401 invalid api key")
+
+    def chat_model(self, settings, credentials):
+        if credentials.get(NOVITA_KEY) == "good-key-123":
+            return fake_model("ok", tool_call("ping", {"value": 7}), "done")
+        return Broken(messages=iter([]), received=[])
+
+    monkeypatch.setattr(NovitaProvider, "chat_model", chat_model)
+    monkeypatch.setattr(flow, "available_providers", lambda: [NovitaProvider()])
+    monkeypatch.setattr(flow, "detect_hardware", lambda ctx: hardware(ram=4))
+    return lambda r: httpx.Response(500)  # no model list: the id is typed
+
+
+def _novita_setup(workspace, handler, *answers):
+    prompter = ScriptedPrompter("en", *answers)
+    ctx, buf = make_ctx(workspace, prompter, handler=handler)
+    return flow.handle(ctx, SetupInput()), ctx, buf.getvalue()
+
+
+def test_wrong_key_failing_verification_keeps_working_key(workspace, novita_only):
+    from app.credentials import Credentials
+
+    creds = Credentials(workspace, {})
+    creds.set(NOVITA_KEY, "good-key-123")
+    out, ctx, text = _novita_setup(
+        workspace, novita_only, "novita", True, "wrong-key-456", "some/model", "quit"
+    )
+    assert out.completed is False
+    assert "invalid api key" in text
+    assert creds.get(NOVITA_KEY) == "good-key-123"  # .env untouched
+    assert ctx.pending_keys == {}
+
+
+def test_new_key_written_only_after_verification(workspace, novita_only):
+    from app.credentials import Credentials
+
+    out, ctx, text = _novita_setup(
+        workspace,
+        novita_only,
+        "novita",
+        True,
+        "wrong-key-456",
+        "some/model",
+        "novita",
+        True,
+        "good-key-123",
+        "some/model",
+    )
+    assert out.completed is True
+    assert Credentials(workspace, {}).get(NOVITA_KEY) == "good-key-123"
+    assert ctx.msg("remote.key_saved", path=str(workspace / ".env")) in " ".join(text.split())
+    assert ctx.pending_keys == {}

@@ -1,5 +1,8 @@
 """Remote API keys: environment first, then `<workspace>/.env` (mode 0600).
 
+During `-setup` a newly typed key is held in memory (`overrides`, ahead of the
+file) until verification succeeds; only then is it written to `.env`.
+
 Keys are never written to `settings.json`, logs, output or the REPL history.
 """
 
@@ -8,7 +11,7 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 NOVITA_KEY = "NOVITA_API_KEY"
@@ -33,6 +36,12 @@ def _parse_env(text: str) -> dict[str, str]:
     return values
 
 
+def check_value(name: str, value: str) -> None:
+    """Refuse an empty value or one with control characters (newlines included)."""
+    if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError(f"{name}: empty value or control characters")
+
+
 def mask(value: str | None) -> str:
     if not value:
         return "—"
@@ -44,7 +53,8 @@ def mask(value: str | None) -> str:
 @dataclass
 class Credentials:
     workspace: Path
-    env: Mapping[str, str] | None = None
+    env: Mapping[str, str] | None = field(default=None, repr=False)
+    overrides: Mapping[str, str] | None = field(default=None, repr=False)
 
     @property
     def env_file(self) -> Path:
@@ -56,9 +66,13 @@ class Credentials:
         except FileNotFoundError:
             return {}
 
-    def get(self, name: str) -> str | None:
+    def from_env(self, name: str) -> str | None:
         env = os.environ if self.env is None else self.env
-        value = env.get(name)
+        return env.get(name) or None
+
+    def get(self, name: str) -> str | None:
+        """Environment, then an unsaved setup override, then `.env`."""
+        value = self.from_env(name) or (self.overrides or {}).get(name)
         if value:
             return value
         return self._file_values().get(name) or None
@@ -71,8 +85,7 @@ class Credentials:
         a temporary file created with mode 0600 and replaces `.env` atomically,
         so the key is never written into a file with looser permissions.
         """
-        if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
-            raise ValueError(f"{name}: empty value or control characters")
+        check_value(name, value)
         path = self.env_file
         lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
         out, replaced = [], False

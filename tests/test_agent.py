@@ -82,6 +82,19 @@ def test_rebuilt_with_history_kept_after_change(workspace):
     assert len([m for m in agent.history if isinstance(m, HumanMessage)]) == 4
 
 
+def test_rebuilt_when_the_providers_key_changes(workspace):
+    from app.credentials import NOVITA_KEY
+
+    agent = agent_for(workspace, fake_model("a", "b"), fake_model("c"))
+    novita = SETTINGS.model_copy(update={"provider": "novita"})
+    agent.ask("x", novita, Credentials(workspace, {NOVITA_KEY: "old-key-123"}))
+    agent.ask("y", novita, Credentials(workspace, {NOVITA_KEY: "old-key-123"}))
+    assert agent.builds == 1
+    agent.ask("z", novita, Credentials(workspace, {NOVITA_KEY: "new-key-456"}))
+    assert agent.builds == 2
+    assert "old-key-123" not in repr(agent._key) and "new-key-456" not in repr(agent._key)
+
+
 def test_system_prompt_follows_language(workspace):
     model_en, model_cs = fake_model("a"), fake_model("b")
     agent = agent_for(workspace, model_en, model_cs)

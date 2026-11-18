@@ -47,6 +47,7 @@ class SetupResult:
 class Provider(ABC):
     name: str
     label_key: str
+    key_name: str | None = None  # the credential (env var / `.env` name) this provider uses
 
     @abstractmethod
     def is_remote(self, settings: Settings) -> bool: ...

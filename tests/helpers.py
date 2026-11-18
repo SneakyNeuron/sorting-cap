@@ -92,9 +92,11 @@ class FakeRunner:
 
     responder: Callable[[list[str], str], CommandResult] = lambda args, mode: CommandResult(0)
     calls: list[tuple[list[str], str]] = field(default_factory=list)
+    envs: list[dict | None] = field(default_factory=list)
 
-    def run(self, args, *, mode="capture", timeout=None, log_name=None) -> CommandResult:
+    def run(self, args, *, mode="capture", timeout=None, log_name=None, env=None) -> CommandResult:
         self.calls.append((list(args), mode))
+        self.envs.append(dict(env) if env else None)
         return self.responder(list(args), mode)
 
     def shell(self, script, *, mode="interactive", timeout=None) -> CommandResult:

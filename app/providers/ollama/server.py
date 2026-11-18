@@ -7,6 +7,7 @@ the user confirms it.
 from __future__ import annotations
 
 import enum
+import json
 import shlex
 import shutil
 import socket
@@ -18,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.providers.base import SetupAborted
+from app.providers.hosts import is_loopback_url
 from app.setup.hardware import Hardware, is_docker_permission_error
 from app.tools.context import Choice, ToolContext
 
@@ -29,8 +31,21 @@ class Status(enum.Enum):
     RUNNING = "running"
     OTHER = "other"  # something else answers on the port
     STOPPED_BINARY = "stopped_binary"
+    # an `ollama` container exists (stopped, or running on another port)
     STOPPED_CONTAINER = "stopped_container"
     NOTHING = "nothing"
+
+
+@dataclass(frozen=True)
+class Container:
+    """An existing `ollama` Docker container: its state and loopback host port."""
+
+    state: str
+    port: int | None = None
+
+    @property
+    def running(self) -> bool:
+        return self.state == "running"
 
 
 @dataclass(frozen=True)
@@ -38,6 +53,7 @@ class Detection:
     status: Status
     version: str | None = None
     systemd: bool = False
+    container: Container | None = None
 
 
 def docker_run_command(port: int = DEFAULT_PORT, gpu: bool = False) -> list[str]:
@@ -57,6 +73,46 @@ def docker_run_command(port: int = DEFAULT_PORT, gpu: bool = False) -> list[str]
         cmd.append("--gpus=all")
     cmd.append("ollama/ollama")
     return cmd
+
+
+CONTAINER_INSPECT = [
+    "docker",
+    "container",
+    "inspect",
+    "--format",
+    "{{.State.Status}} {{json .HostConfig.PortBindings}}",
+    "ollama",
+]
+
+
+def parse_container(stdout: str) -> Container | None:
+    """Parse `CONTAINER_INSPECT` output: `<state> <port bindings as JSON>`."""
+    state, _, bindings = stdout.strip().partition(" ")
+    if not state:
+        return None
+    port = None
+    try:
+        data = json.loads(bindings) if bindings else None
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        for binding in data.get("11434/tcp") or []:
+            host_port = str((binding or {}).get("HostPort", ""))
+            if host_port.isdigit():
+                port = int(host_port)
+                break
+    return Container(state, port)
+
+
+def ollama_host(base_url: str) -> str:
+    """`OLLAMA_HOST` value that makes `ollama serve` listen where `base_url` points."""
+    parts = urlsplit(base_url)
+    host = parts.hostname or "127.0.0.1"
+    if host == "localhost":
+        host = "127.0.0.1"
+    elif ":" in host:
+        host = f"[{host}]"
+    return f"{host}:{parts.port or DEFAULT_PORT}"
 
 
 def _port_is_free(port: int) -> bool:
@@ -116,14 +172,17 @@ class OllamaServer:
             return Detection(
                 Status.STOPPED_BINARY, systemd=units.ok and "ollama.service" in units.stdout
             )
-        if self.which("docker"):
-            ps = self.ctx.runner.run(
-                ["docker", "ps", "-a", "--filter", "name=^ollama$", "--format", "{{.State}}"],
-                timeout=20,
-            )
-            if ps.ok and ps.stdout.strip():
-                return Detection(Status.STOPPED_CONTAINER)
+        container = self.find_container()
+        if container is not None:
+            return Detection(Status.STOPPED_CONTAINER, container=container)
         return Detection(Status.NOTHING)
+
+    def find_container(self) -> Container | None:
+        """The existing `ollama` container (any state), or None (no Docker, no container)."""
+        if not self.which("docker"):
+            return None
+        result = self.ctx.runner.run(CONTAINER_INSPECT, timeout=20)
+        return parse_container(result.stdout) if result.ok else None
 
     # --- actions -----------------------------------------------------------
 
@@ -162,8 +221,11 @@ class OllamaServer:
             result = self.ctx.runner.run(cmd, mode="interactive", timeout=120)
         else:
             cmd = ["ollama", "serve"]
-            self._confirm_command(shlex.join(cmd))
-            result = self.ctx.runner.run(cmd, mode="detached", log_name="ollama-serve")
+            env = {"OLLAMA_HOST": ollama_host(base_url)}
+            self._confirm_command(
+                " ".join([*(f"{k}={v}" for k, v in env.items()), shlex.join(cmd)])
+            )
+            result = self.ctx.runner.run(cmd, mode="detached", log_name="ollama-serve", env=env)
         if not result.ok:
             raise SetupAborted(
                 self.ctx.msg("ollama.command_failed", detail=result.stderr.strip() or "?")
@@ -177,6 +239,21 @@ class OllamaServer:
         if not result.ok:
             raise self._docker_failure(result.stderr)
         return self.wait_ready(base_url)
+
+    def reuse_container(self, container: Container, base_url: str) -> str:
+        """Use the existing `ollama` container on the port it is published on.
+
+        A container created on another port by an earlier, unfinished `-setup` is
+        found here again instead of a second `docker run` clashing on its name.
+        """
+        url = base_url
+        if container.port and container.port != self._port_of(base_url):
+            url = f"http://localhost:{container.port}"
+        if container.running:
+            self.ctx.say("ollama.container_running", url=url)
+            return self.wait_ready(url)
+        self.ctx.say("ollama.stopped_container")
+        return self.start_container(url)
 
     def next_free_port(self, start: int = DEFAULT_PORT + 1) -> int:
         for port in range(start, start + 100):
@@ -202,12 +279,23 @@ class OllamaServer:
             )
         return self.wait_ready(base_url)
 
+    def _ensure_remote(self, base_url: str) -> str:
+        """A non-loopback URL is used as is: never a local start or install for it."""
+        ctx = self.ctx
+        state, version = self.probe(base_url)
+        if state == "running":
+            ctx.say("ollama.found", style="green", url=base_url, version=version or "?")
+            return base_url
+        raise SetupAborted(ctx.msg("ollama.remote_unreachable", url=base_url))
+
     def _port_of(self, base_url: str) -> int:
         return urlsplit(base_url).port or DEFAULT_PORT
 
     def ensure(self, hw: Hardware, base_url: str) -> str:
         """Return a base URL with a running Ollama, or raise `SetupAborted`."""
         ctx = self.ctx
+        if not is_loopback_url(base_url):
+            return self._ensure_remote(base_url)
         detection = self.detect(base_url)
         if detection.status is Status.RUNNING:
             ctx.say("ollama.found", style="green", url=base_url, version=detection.version or "?")
@@ -216,13 +304,17 @@ class OllamaServer:
             ctx.say("ollama.port_taken", style="yellow", url=base_url)
             if not hw.docker:
                 raise SetupAborted(ctx.msg("ollama.port_taken_no_docker"))
+            container = self.find_container()
+            if container is not None:
+                if not container.port or container.port == self._port_of(base_url):
+                    raise SetupAborted(ctx.msg("ollama.container_conflict"))
+                return self.reuse_container(container, base_url)
             return self.install_docker(hw, self.next_free_port(self._port_of(base_url) + 1))
         if detection.status is Status.STOPPED_BINARY:
             ctx.say("ollama.stopped_binary")
             return self.start_binary(detection.systemd, base_url)
-        if detection.status is Status.STOPPED_CONTAINER:
-            ctx.say("ollama.stopped_container")
-            return self.start_container(base_url)
+        if detection.status is Status.STOPPED_CONTAINER and detection.container is not None:
+            return self.reuse_container(detection.container, base_url)
         ctx.say("ollama.not_found")
         choices = [Choice("native", ctx.msg("ollama.route_native"))]
         if hw.docker:

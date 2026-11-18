@@ -40,7 +40,7 @@ A guided loop, all in the chat:
    - **Custom OpenAI-compatible endpoint** — any URL including its version path, e.g. `http://localhost:1234/v1` for LM Studio, vLLM or llama.cpp; optional key; model name. A `localhost`/`127.x`/`::1` URL counts as local.
 
    Remote providers are never preselected and always show that your prompts and data leave the machine. If your hardware is too small for any local model, the local option is shown as unavailable and you can use Novita or another provider instead.
-4. Verification: one chat reply and one tool call. On failure, or if you decline a step, you are back in the menu with the reason.
+4. Verification: one chat reply and one tool call. On failure, or if you decline a step, you are back in the menu with the reason. A key typed during `-setup` is written to `<workspace>/.env` only after verification succeeds, so a mistyped key never replaces a working one; when the key's environment variable is set, it wins and `-setup` does not ask for one.
 
 After the first successful setup the app tour is shown once.
 
