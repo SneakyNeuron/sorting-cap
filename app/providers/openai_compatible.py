@@ -1,0 +1,63 @@
+"""The `openai_compatible` provider: any OpenAI-compatible endpoint.
+
+The base URL includes its version path (e.g. `http://localhost:1234/v1`); the
+client appends `/chat/completions`. A loopback host counts as local.
+"""
+
+from __future__ import annotations
+
+from urllib.parse import urlsplit
+
+from app.credentials import OPENAI_KEY
+from app.providers.base import Availability, Provider, SetupResult
+from app.providers.hosts import is_loopback_url
+from app.providers.openai_api import openai_compatible_model
+from app.providers.remote import ask_key, require_data_notice
+from app.providers.verify import verify_chat_model
+
+
+def validate_base_url(url: str) -> bool:
+    parts = urlsplit(url.strip())
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+class OpenAICompatibleProvider(Provider):
+    name = "openai_compatible"
+    label_key = "provider.openai_compatible.label"
+
+    def is_remote(self, settings) -> bool:
+        return not is_loopback_url(settings.openai_base_url)
+
+    def availability(self, hardware) -> Availability:
+        return Availability(True)
+
+    def run_setup(self, ctx, hardware) -> SetupResult:
+        url = (
+            ctx.text(
+                ctx.msg("openai.url_prompt"),
+                default=ctx.settings.openai_base_url,
+                validate=lambda v: None if validate_base_url(v) else ctx.msg("openai.url_invalid"),
+            )
+            .strip()
+            .rstrip("/")
+        )
+        if not is_loopback_url(url):
+            require_data_notice(ctx)
+        ask_key(ctx, OPENAI_KEY, optional=True)
+        model = ctx.text(
+            ctx.msg("openai.model_prompt"),
+            default=ctx.settings.model if ctx.settings.provider == self.name else None,
+            validate=lambda v: None if v else ctx.msg("openai.model_required"),
+        )
+        return SetupResult(model=model, updates={"openai_base_url": url})
+
+    def verify(self, ctx, settings) -> None:
+        verify_chat_model(ctx, self.chat_model(settings, ctx.credentials), ctx.msg(self.label_key))
+
+    def chat_model(self, settings, credentials, http_client=None):
+        return openai_compatible_model(
+            model=settings.model,
+            api_base=settings.openai_base_url or "",
+            api_key=credentials.get(OPENAI_KEY),
+            http_client=http_client,
+        )
