@@ -19,12 +19,12 @@ Roadmap Phase 1. The repository holds only the constitution; there is no code. T
 - No web server, web UI or database in this phase.
 
 ## Group 1: uv scaffold and CI
-- [ ] `pyproject.toml` for distribution `sortingcap` (Python 3.12, `requires-python = ">=3.12,<3.13"`), `uv_build` backend configured with module `app` at the repository root, console script `sortingcap = "app.cli:main"`, runtime and dev dependency groups (T1); `uv.lock` committed
-- [ ] `.gitignore` (venv, caches, `.env`, build output) and `.env.example` documenting `NOVITA_API_KEY` and `SORTINGCAP_OPENAI_API_KEY`; its header comment says the file is copied to `<workspace>/.env` (not the repository root) and that `SORTINGCAP_WORKSPACE` must be set in the shell, not in that file
-- [ ] Ruff config in `pyproject.toml` (lint + format; rule set: `E`, `F`, `I`, `B`, `UP`, `SIM`); pytest config enabling pytest-socket so tests run with network sockets disabled (`--disable-socket --allow-unix-socket`: asyncio's event loop needs a Unix `socketpair()`), with `--import-mode=importlib` so test files that mirror `app/` may share basenames
-- [ ] `app/` package with `app/cli.py` whose `main()` supports `--version`, and `app/paths.py` resolving the repository's `prompts/` and `defaults/` directories
-- [ ] `.github/workflows/ci.yml`: install uv, `uv sync --locked`, `uv run ruff check`, `uv run ruff format --check`, `uv run pytest`
-- [ ] Tests: `sortingcap --version` prints the package version and exits 0 (`tests/test_cli.py`); `app/paths.py` finds both directories (`tests/test_paths.py`); `tests/test_project.py` checks `uv.lock` against the T1 ranges, the `uv_build` backend and the absence of `python-dotenv`
+- [x] `pyproject.toml` for distribution `sortingcap` (Python 3.12, `requires-python = ">=3.12,<3.13"`), `uv_build` backend configured with module `app` at the repository root, console script `sortingcap = "app.cli:main"`, runtime and dev dependency groups (T1); `uv.lock` committed
+- [x] `.gitignore` (venv, caches, `.env`, build output) and `.env.example` documenting `NOVITA_API_KEY` and `SORTINGCAP_OPENAI_API_KEY`; its header comment says the file is copied to `<workspace>/.env` (not the repository root) and that `SORTINGCAP_WORKSPACE` must be set in the shell, not in that file
+- [x] Ruff config in `pyproject.toml` (lint + format; rule set: `E`, `F`, `I`, `B`, `UP`, `SIM`); pytest config enabling pytest-socket so tests run with network sockets disabled (`--disable-socket --allow-unix-socket`: asyncio's event loop needs a Unix `socketpair()`), with `--import-mode=importlib` so test files that mirror `app/` may share basenames
+- [x] `app/` package with `app/cli.py` whose `main()` supports `--version`, and `app/paths.py` resolving the repository's `prompts/` and `defaults/` directories
+- [x] `.github/workflows/ci.yml`: install uv, `uv sync --locked`, `uv run ruff check`, `uv run ruff format --check`, `uv run pytest`
+- [x] Tests: `sortingcap --version` prints the package version and exits 0 (`tests/test_cli.py`); `app/paths.py` finds both directories (`tests/test_paths.py`); `tests/test_project.py` checks `uv.lock` against the T1 ranges, the `uv_build` backend and the absence of `python-dotenv`
 
 ## Group 2: Texts, prompts and message catalog
 - [ ] `app/texts.py`: loaders for prompts (`prompts/<lang>/<agent>/*.md`), prewritten texts and messages (`defaults/texts/<lang>/messages.json`) by language; a missing key or file fails loudly; the only module that reads `prompts/`
