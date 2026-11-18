@@ -10,3 +10,5 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = REPO_ROOT / "prompts"
 DEFAULTS_DIR = REPO_ROOT / "defaults"
 TEXTS_DIR = DEFAULTS_DIR / "texts"
+# Notes written into a new workspace (English only, R18 of phase 2).
+WORKSPACE_NOTES_DIR = DEFAULTS_DIR / "workspace"

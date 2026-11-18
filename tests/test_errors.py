@@ -52,10 +52,12 @@ def test_validation_message_localizes_custom_errors():
 
 
 def test_validation_message_falls_back_to_pydantic_text():
+    from decimal import Decimal
+
     from pydantic import BaseModel
 
     class M(BaseModel):
-        n: float
+        n: Decimal  # `validation.decimal_parsing` has no catalog entry
 
     with pytest.raises(ValidationError) as exc:
         M(n="x")

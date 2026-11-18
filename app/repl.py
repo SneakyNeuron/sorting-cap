@@ -98,7 +98,7 @@ class Repl:
             console=self.console,
             registry=self.registry,
             env=self.env,
-            **self.ctx_kwargs,
+            **{"model_factory": self.agent.model_factory, **self.ctx_kwargs},
         )
         ctx.prompter = InteractivePrompter(self.console, lambda: ctx.texts)
         return ctx

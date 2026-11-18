@@ -12,6 +12,7 @@ from rich.markup import escape
 
 from app.credentials import Credentials
 from app.errors import UserFacingError
+from app.providers.base import ModelFactory, default_model_factory
 from app.settings import Settings, load_settings, save_settings
 from app.texts import LANGUAGE_NAMES, LANGUAGES, Texts
 
@@ -164,6 +165,8 @@ class ToolContext:
     env: Mapping[str, str] | None = field(default=None, repr=False)  # may hold real keys
     runner_factory: Callable[[ToolContext], CommandRunner] | None = None
     http_transport: httpx.BaseTransport | None = None
+    # builds the chat model for tools that call the LLM (intake, extraction); tests inject fakes
+    model_factory: ModelFactory = default_model_factory
     settings: Settings = field(init=False)
     # keys typed during `-setup`, used for verification, written to `.env` only after it
     pending_keys: dict[str, str] = field(default_factory=dict, init=False, repr=False)

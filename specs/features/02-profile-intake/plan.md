@@ -14,12 +14,12 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - No vector index, no embedding model, no scraping.
 
 ## Group 1: Dependencies, workspace notes and settings
-- [ ] Add `langgraph`, `llama-index-core`, `llama-index-readers-file`, `beautifulsoup4`, `onnxruntime`, `tokenizers` and `cryptography` (T1); update `uv.lock`; extend `tests/test_project.py` to check they are present and that `torch`, `transformers` and `optimum` are absent; an architecture test asserts no module in `app/` imports `huggingface_hub`
-- [ ] Narrow `tests/test_architecture.py::test_no_prompt_files_read_outside_texts` to paths under `prompts/`, so workspace file names such as `profile.md` are allowed; workspace note texts in `defaults/workspace/` read through `app/texts.py`
-- [ ] `ToolContext.model_factory` (default `default_model_factory`) and the same in `tests/helpers.make_ctx`; `ToolOutput.incomplete` (default false), which the headless runner maps to exit 1 after rendering the output
-- [ ] `Settings.guard_threshold` (float, default 0.5, 0 < t < 1) with validation and a localized error key; shown by `-settings`, settable with `--guard-threshold`
-- [ ] Workspace `README.md` and `AGENTS.md` (English text in `defaults/workspace/`) written on creation and on start when missing, never overwritten (R18)
-- [ ] Tests: dependency check; threshold default, validation and `-settings` round trip; notes written on a new workspace, added to an existing one, and an edited note left untouched
+- [x] Add `langgraph`, `llama-index-core`, `llama-index-readers-file`, `beautifulsoup4`, `onnxruntime`, `tokenizers` and `cryptography` (T1); update `uv.lock`; extend `tests/test_project.py` to check they are present and that `torch`, `transformers` and `optimum` are absent; an architecture test asserts no module in `app/` imports `huggingface_hub`
+- [x] Narrow `tests/test_architecture.py::test_no_prompt_files_read_outside_texts` to paths under `prompts/`, so workspace file names such as `profile.md` are allowed; workspace note texts in `defaults/workspace/` read through `app/texts.py`
+- [x] `ToolContext.model_factory` (default `default_model_factory`) and the same in `tests/helpers.make_ctx`; `ToolOutput.incomplete` (default false), which the headless runner maps to exit 1 after rendering the output
+- [x] `Settings.guard_threshold` (float, default 0.5, 0 < t < 1) with validation and a localized error key; shown by `-settings`, settable with `--guard-threshold`
+- [x] Workspace `README.md` and `AGENTS.md` (English text in `defaults/workspace/`) written on creation and on start when missing, never overwritten (R18)
+- [x] Tests: dependency check; threshold default, validation and `-settings` round trip; notes written on a new workspace, added to an existing one, and an edited note left untouched
 
 ## Group 2: Guard rules
 - [ ] `app/guard/rules.py`: rule set from R3 as data (name, pattern, languages), with case- and diacritics-insensitive matching over normalized text; HTML hidden-text extraction with `beautifulsoup4` (inline style, `hidden`, `aria-hidden`, and class/id rules from the page's own `<style>` blocks, T6) returned separately from visible text; zero-width and bidi control detection

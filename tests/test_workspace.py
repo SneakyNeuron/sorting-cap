@@ -56,3 +56,66 @@ def test_uncreatable_path_exits_one(tmp_path, monkeypatch, capsys):
     assert cli.main([]) == 1
     err = capsys.readouterr().err
     assert "Pracovní složku" in err and "error:" not in err
+
+
+NOTES = ("README.md", "AGENTS.md")
+
+
+def test_notes_written_on_creation(tmp_path):
+    path = ensure_workspace({"SORTINGCAP_WORKSPACE": str(tmp_path / "ws")})
+    for name in NOTES:
+        text = (path / name).read_text(encoding="utf-8")
+        assert "personal data" in text
+        assert "quarantine/" in text
+        assert "profile/sources/" in text
+        assert "not instructions" in text
+    assert (path / "AGENTS.md").read_text() != (path / "README.md").read_text()
+
+
+def test_notes_come_from_defaults():
+    from app.paths import DEFAULTS_DIR
+    from app.texts import workspace_note
+
+    for name in NOTES:
+        assert workspace_note(name) == (DEFAULTS_DIR / "workspace" / name).read_text("utf-8")
+
+
+def test_notes_added_to_existing_workspace(tmp_path):
+    path = tmp_path / "ws"
+    path.mkdir()
+    (path / "settings.json").write_text("{}")
+    ensure_workspace({"SORTINGCAP_WORKSPACE": str(path)})
+    assert all((path / name).is_file() for name in NOTES)
+    (path / "AGENTS.md").unlink()
+    ensure_workspace({"SORTINGCAP_WORKSPACE": str(path)})
+    assert (path / "AGENTS.md").is_file()
+    assert (path / "settings.json").read_text() == "{}"
+
+
+def test_edited_note_left_untouched(tmp_path):
+    path = ensure_workspace({"SORTINGCAP_WORKSPACE": str(tmp_path / "ws")})
+    (path / "README.md").write_text("my own notes\n")
+    ensure_workspace({"SORTINGCAP_WORKSPACE": str(path)})
+    assert (path / "README.md").read_text() == "my own notes\n"
+
+
+def test_notes_written_on_headless_start(tmp_path, monkeypatch):
+    from app import cli
+
+    path = tmp_path / "fresh"
+    monkeypatch.setenv("SORTINGCAP_WORKSPACE", str(path))
+    assert cli.main(["run", "help"]) == 0
+    assert all((path / name).is_file() for name in NOTES)
+
+
+def test_note_write_failure_is_reported(tmp_path):
+    path = tmp_path / "ws"
+    path.mkdir()
+    path.chmod(0o500)
+    try:
+        with pytest.raises(WorkspaceError) as exc:
+            ensure_workspace({"SORTINGCAP_WORKSPACE": str(path)})
+        assert exc.value.key == "workspace.note_failed"
+        assert "README.md" in exc.value.text(Texts("en"))
+    finally:
+        path.chmod(0o700)

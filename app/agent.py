@@ -14,17 +14,16 @@ from typing import TYPE_CHECKING, Any
 from app.credentials import Credentials
 from app.errors import UserFacingError
 from app.messages import message_text
-from app.providers.base import get_provider
+from app.providers.base import ModelFactory, default_model_factory, get_provider
 from app.settings import Settings
 from app.texts import Texts
 from app.tools.context import ToolContext
 from app.tools.registry import Registry
 
 if TYPE_CHECKING:
-    from langchain_core.language_models import BaseChatModel
     from langchain_core.tools import BaseTool
 
-ModelFactory = Callable[[Settings, Credentials], "BaseChatModel"]
+__all__ = ["ChatAgent", "ModelFactory", "NoModelConfigured", "Reply", "default_model_factory"]
 
 
 class NoModelConfigured(Exception):
@@ -35,10 +34,6 @@ class NoModelConfigured(Exception):
 class Reply:
     answer: str
     reasoning: str | None = None
-
-
-def default_model_factory(settings: Settings, credentials: Credentials) -> BaseChatModel:
-    return get_provider(settings.provider).chat_model(settings, credentials)
 
 
 def wrap_tools(

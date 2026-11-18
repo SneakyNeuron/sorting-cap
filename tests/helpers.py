@@ -121,7 +121,9 @@ def make_ctx(
     runner: FakeRunner | None = None,
     handler: Callable[[httpx.Request], httpx.Response] | None = None,
     env: dict | None = None,
+    model_factory=None,
 ) -> tuple[ToolContext, io.StringIO]:
+    from app.agent import default_model_factory
     from app.tools import default_registry
 
     con, buf = console()
@@ -134,6 +136,7 @@ def make_ctx(
         env=env if env is not None else {},
         runner_factory=lambda _ctx: runner,
         http_transport=httpx.MockTransport(handler) if handler else httpx.MockTransport(_refuse),
+        model_factory=model_factory or default_model_factory,
     )
     return ctx, buf
 

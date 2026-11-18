@@ -32,6 +32,7 @@ def test_help_command_shows_flags(workspace, lang):
         "--model",
         "--ollama-base-url",
         "--openai-base-url",
+        "--guard-threshold",
     ]
     out.render(ctx)
     assert "--openai-base-url" in buf.getvalue()

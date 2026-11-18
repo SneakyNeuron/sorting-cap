@@ -8,6 +8,7 @@ builds a LangChain chat model from settings. `-setup`'s menu and
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -130,3 +131,11 @@ def get_provider(name: str) -> Provider:
         return _REGISTRY[name]
     except KeyError as exc:
         raise KeyError(f"unknown provider: {name!r}") from exc
+
+
+ModelFactory = Callable[["Settings", "Credentials"], "BaseChatModel"]
+
+
+def default_model_factory(settings: Settings, credentials: Credentials) -> BaseChatModel:
+    """The configured provider's chat model: what the chat agent and tools use by default."""
+    return get_provider(settings.provider).chat_model(settings, credentials)

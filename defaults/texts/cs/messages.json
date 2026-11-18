@@ -106,6 +106,7 @@
   "setup.verifying": "Zkouším {provider} s modelem {model}…",
   "tool.help.arg.command": "Příkaz, jehož volby ukázat.",
   "tool.help.description": "Vypíše příkazy, nebo volby jednoho příkazu.",
+  "tool.settings.arg.guard_threshold": "Skóre klasifikátoru injekcí (mezi 0 a 1, bez krajních hodnot), od kterého jde obsah z webu do karantény.",
   "tool.settings.arg.language": "Jazyk aplikace.",
   "tool.settings.arg.model": "Název modelu u poskytovatele.",
   "tool.settings.arg.ollama_base_url": "Adresa serveru Ollama.",
@@ -119,6 +120,9 @@
   "validation.datetime_parsing": "čekám datum a čas (ISO 8601)",
   "validation.datetime_type": "čekám datum a čas (ISO 8601)",
   "validation.extra_forbidden": "neznámá položka",
+  "validation.float_parsing": "čekám číslo",
+  "validation.float_type": "čekám číslo",
+  "validation.guard_threshold": "čekám číslo větší než 0 a menší než 1, ne {value}",
   "validation.http_url": "čekám adresu http:// nebo https:// s hostitelem, ne '{value}'",
   "validation.int_parsing": "čekám celé číslo",
   "validation.int_type": "čekám celé číslo",
@@ -131,5 +135,6 @@
   "verify.no_tool_call": "Model u {provider} nezavolal zkušební nástroj. Vyber jiný model.",
   "verify.no_tools": "Model u {provider} neumí volat nástroje. Vyber jiný.",
   "workspace.create_failed": "Pracovní složku {path} nejde vytvořit: {detail}",
-  "workspace.not_directory": "Pracovní složka {path} není adresář."
+  "workspace.not_directory": "Pracovní složka {path} není adresář.",
+  "workspace.note_failed": "Do pracovní složky {path} nejde zapsat {name}: {detail}"
 }

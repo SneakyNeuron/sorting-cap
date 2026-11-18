@@ -15,6 +15,10 @@ class ToolInput(BaseModel):
 
 
 class ToolOutput(BaseModel):
+    # Set when the tool did part of its work (e.g. some sources refused); the headless
+    # runner renders the output as usual and then exits 1.
+    incomplete: bool = False
+
     def render(self, ctx: ToolContext) -> None:
         """Show the output to a human. Subclasses override this."""
         from rich.markup import escape

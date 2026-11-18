@@ -106,6 +106,7 @@
   "setup.verifying": "Testing {provider} with model {model}…",
   "tool.help.arg.command": "Command whose options to show.",
   "tool.help.description": "Lists the commands, or one command's options.",
+  "tool.settings.arg.guard_threshold": "Injection-classifier score (between 0 and 1, exclusive) at or above which web content is quarantined.",
   "tool.settings.arg.language": "App language.",
   "tool.settings.arg.model": "Model name at the provider.",
   "tool.settings.arg.ollama_base_url": "Ollama server URL.",
@@ -119,6 +120,9 @@
   "validation.datetime_parsing": "expected a date and time (ISO 8601)",
   "validation.datetime_type": "expected a date and time (ISO 8601)",
   "validation.extra_forbidden": "unknown field",
+  "validation.float_parsing": "expected a number",
+  "validation.float_type": "expected a number",
+  "validation.guard_threshold": "expected a number greater than 0 and less than 1, got {value}",
   "validation.http_url": "expected an http:// or https:// URL with a host, got '{value}'",
   "validation.int_parsing": "expected a whole number",
   "validation.int_type": "expected a whole number",
@@ -131,5 +135,6 @@
   "verify.no_tool_call": "The model at {provider} did not call the test tool. Pick another model.",
   "verify.no_tools": "The model at {provider} cannot call tools. Pick another one.",
   "workspace.create_failed": "Cannot create the workspace {path}: {detail}",
-  "workspace.not_directory": "The workspace {path} is not a directory."
+  "workspace.not_directory": "The workspace {path} is not a directory.",
+  "workspace.note_failed": "Cannot write {name} in the workspace {path}: {detail}"
 }

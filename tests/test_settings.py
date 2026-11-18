@@ -90,3 +90,32 @@ def test_file_errors_are_message_keys_in_callers_language(workspace):
         "ollama, novita, openai_compatible"
     )
     assert "neznámý poskytovatel 'foo'" in exc.value.text(Texts("cs"))
+
+
+def test_guard_threshold_default():
+    assert Settings().guard_threshold == 0.5
+
+
+@pytest.mark.parametrize("value", [0, 1, -0.1, 1.5, float("nan"), float("inf")])
+def test_guard_threshold_must_be_between_zero_and_one(value):
+    with pytest.raises(ValueError, match="guard_threshold"):
+        Settings(guard_threshold=value)
+
+
+@pytest.mark.parametrize("value", [0.01, 0.5, 0.99])
+def test_guard_threshold_accepts_open_interval(value):
+    assert Settings(guard_threshold=value).guard_threshold == value
+
+
+def test_guard_threshold_error_is_localized(workspace):
+    from app.texts import Texts
+
+    path = settings_path(workspace)
+    path.write_text(json.dumps({"guard_threshold": 2}))
+    with pytest.raises(SettingsError) as exc:
+        load_settings(workspace)
+    assert exc.value.text(Texts("en")) == (
+        f"The settings file {path} is invalid: guard_threshold: "
+        "expected a number greater than 0 and less than 1, got 2"
+    )
+    assert "čekám číslo větší než 0 a menší než 1, ne 2" in exc.value.text(Texts("cs"))
