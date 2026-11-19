@@ -1,4 +1,5 @@
-"""Files only the user may read (mode 0600): atomic writes and created-if-missing files."""
+"""Files and directories only the user may read (0600 / 0700): atomic writes,
+created-if-missing files and private directories."""
 
 from __future__ import annotations
 
@@ -33,4 +34,13 @@ def private_file(path: Path) -> Path:
     """Create `path` if missing and make it readable only by the user (0600)."""
     os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
     path.chmod(0o600)
+    return path
+
+
+def private_dir(path: Path, *, exist_ok: bool = True) -> Path:
+    """Create the directory `path` with mode 0700 and set 0700 (the umask cannot widen
+    it, and an existing one is tightened). `exist_ok=False`: `FileExistsError` when it
+    exists. The parent must exist."""
+    path.mkdir(mode=0o700, exist_ok=exist_ok)
+    path.chmod(0o700)
     return path

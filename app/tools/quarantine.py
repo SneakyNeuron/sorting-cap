@@ -22,7 +22,7 @@ from app.schemas.quarantine import (
     ShowQuarantineOutput,
 )
 from app.schemas.sources import SourceType
-from app.tools.context import HeadlessPrompter, ToolContext, ToolError
+from app.tools.context import ToolContext, ToolError
 from app.tools.registry import Tool
 
 
@@ -69,7 +69,7 @@ def _source_kind(source: str) -> tuple[SourceType, str, str | None]:
 
 
 def release(ctx: ToolContext, inputs: ReleaseQuarantineInput) -> ReleaseQuarantineOutput:
-    if isinstance(ctx.prompter, HeadlessPrompter):
+    if ctx.is_headless:
         raise ToolError(ctx.msg("headless.chat_only", name=RELEASE_NAME))
     from app.intake.sources import ingest_bytes
 

@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.intake.checklist import ItemId
 from app.schemas.base import ToolInput, ToolOutput
-from app.schemas.profile import Conflict, Relation
+from app.schemas.profile import Conflict, ItemId, Relation
 from app.schemas.sources import SourceResult
 
 if TYPE_CHECKING:
@@ -103,11 +102,12 @@ class Extraction(BaseModel):
         ),
     )
 
-    def values(self) -> list[tuple[str, ExtractedValue]]:
+    def values(self) -> list[tuple[ItemId, ExtractedValue]]:
         """The non-empty values in checklist order."""
+        names: tuple[ItemId, ...] = get_args(ItemId)
         out = []
-        for name in type(self).model_fields:
-            value = getattr(self, name)
+        for name in names:
+            value = getattr(self, name, None)  # the CV item has no field
             if isinstance(value, ExtractedValue) and value.text.strip():
                 out.append((name, value))
         return out
@@ -165,8 +165,13 @@ NoteKind = Literal[
     "model_error_source",
     "source_text_missing",
     "model_error_filter",
+    "filter_interrupted",
     "filter_text_missing",
 ]
+
+
+# Notes saying the filter file was not regenerated although it was due (R14).
+FILTER_NOT_WRITTEN: frozenset[str] = frozenset({"model_error_filter", "filter_interrupted"})
 
 
 class RoundNote(BaseModel):
@@ -243,7 +248,7 @@ class AddInformationOutput(ToolOutput):
         def say(text: str, style: str | None = None) -> None:
             ctx.console.print(Text(escape_controls(text), style=style or ""), highlight=False)
 
-        def titles(ids: list[str]) -> str:
+        def titles(ids: list[ItemId]) -> str:
             return ", ".join(item(i).title(ctx.texts) for i in ids)
 
         def folder(slug: str | None) -> str:
@@ -291,7 +296,7 @@ class AddInformationOutput(ToolOutput):
             say(ctx.msg("add_information.summary.notes"), "bold")
             for note in self.notes:
                 say(f"- {note.text}", "yellow")
-        filter_failed = any(n.kind == "model_error_filter" for n in self.notes)
+        filter_failed = any(n.kind in FILTER_NOT_WRITTEN for n in self.notes)
         if not self.cancelled and not filter_failed:  # a failure is explained in the notes
             say("")
             key = "filter_written" if self.filter_written else "filter_kept"

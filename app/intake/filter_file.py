@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING
 
 from app.files import write_private
 from app.intake.extract import CHAR_BUDGET
-from app.intake.profile import filter_path
 from app.messages import short_error
 from app.providers.structured import invoke_structured
 from app.schemas.filter import FilterFile, FilterOutcome
@@ -39,6 +38,11 @@ if TYPE_CHECKING:
     from app.schemas.sources import Manifest
 
 SECTIONS = ("summary", "must_match", "nice_to_match", "exclusions", "keywords_cs", "keywords_en")
+FILTER_FILE = "listing_filter_file.md"
+
+
+def filter_path(workspace: Path) -> Path:
+    return workspace / FILTER_FILE
 
 
 _HASH_COMMENT = "<!-- profile-sha256: {sha} -->"

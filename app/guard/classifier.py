@@ -280,12 +280,6 @@ def load(workspace: Path) -> Scorer:
 # --- download ----------------------------------------------------------------
 
 
-def is_headless(ctx: ToolContext) -> bool:
-    from app.tools.context import HeadlessPrompter
-
-    return isinstance(ctx.prompter, HeadlessPrompter)
-
-
 def _download_file(ctx: ToolContext, client: httpx.Client, file: ModelFile, advance) -> None:
     dest = model_dir(ctx.workspace) / file.path
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -322,7 +316,7 @@ def download(ctx: ToolContext) -> None:
     checksum is checked on load). Failures raise `GuardUnavailable`; no partial or
     unverified file is left behind.
     """
-    if is_headless(ctx):
+    if ctx.is_headless:
         raise GuardUnavailable("guard.classifier_missing")
     from rich.progress import BarColumn, DownloadColumn, Progress, TextColumn, TransferSpeedColumn
 
@@ -362,7 +356,7 @@ def _has_size(path: Path, size: int) -> bool:
 
 def offer_download(ctx: ToolContext) -> bool:
     """Ask (default no) and download on yes. False when declined or headless."""
-    if is_headless(ctx):
+    if ctx.is_headless:
         return False
     question = ctx.msg(
         "guard.download_offer",
@@ -386,7 +380,7 @@ def ensure_classifier(ctx: ToolContext) -> Scorer:
     refused with the hint to run `-setup` or add the source in chat.
     """
     if not is_installed(ctx.workspace):
-        if is_headless(ctx):
+        if ctx.is_headless:
             raise GuardUnavailable("guard.classifier_missing")
         if ctx.classifier_declined:
             raise GuardUnavailable("guard.classifier_declined")

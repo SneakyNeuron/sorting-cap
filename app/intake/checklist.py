@@ -8,35 +8,19 @@ question. `ITEMS` is in R12 order: every must-know item, then every nice-to-have
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, get_args
+from typing import Final, TypeGuard, get_args
 
+from app.schemas.profile import Group, ItemId
 from app.texts import Texts
 
-# The stable ids used in the `<!-- item:<id> -->` heading comments of `profile.md` (T7).
-ItemId = Literal[
-    "target_roles",
-    "experience",
-    "skills",
-    "education",
-    "languages",
-    "cv",
-    "salary",
-    "contract_type",
-    "locations",
-    "work_mode",
-    "start_date",
-    "industries",
-]
-Group = Literal["must", "nice"]
-
-ITEM_IDS: tuple[str, ...] = get_args(ItemId)
-MUST_KNOW: tuple[str, ...] = ("target_roles", "experience", "skills", "education", "languages")
-CV_ITEM = "cv"
+ITEM_IDS: tuple[ItemId, ...] = get_args(ItemId)
+MUST_KNOW: tuple[ItemId, ...] = ("target_roles", "experience", "skills", "education", "languages")
+CV_ITEM: Final = "cv"
 
 
 @dataclass(frozen=True)
 class Item:
-    id: str
+    id: ItemId
     group: Group
 
     @property
@@ -57,10 +41,10 @@ class Item:
 ITEMS: tuple[Item, ...] = tuple(
     Item(item_id, "must" if item_id in MUST_KNOW else "nice") for item_id in ITEM_IDS
 )
-_BY_ID = {i.id: i for i in ITEMS}
+_BY_ID: dict[str, Item] = {i.id: i for i in ITEMS}
 
 
-def is_item_id(value: str) -> bool:
+def is_item_id(value: str) -> TypeGuard[ItemId]:
     return value in _BY_ID
 
 

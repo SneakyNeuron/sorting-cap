@@ -332,3 +332,62 @@ def test_empty_texts_and_cv_ignored():
     ]
     new, result = merge(full_doc(), updates=updates, answers={"locations": "", "cv": "/x.pdf"})
     assert new == full_doc() and result.changed == [] and result.conflicts == []
+
+
+# --- bodies the app writes cannot change the section structure (validation fix) ------
+
+
+def _round_trip(doc: ProfileDoc) -> ProfileDoc:
+    return parse(render(doc, Texts("en"), Manifest()))
+
+
+def test_answer_with_heading_lines_stays_in_its_item():
+    answer = "Acme 2020\n## Projects\nFoo\n# Top\r\n##\u2028## Other\x0bend"
+    new, _ = merge(full_doc(), answers={"experience": answer}, texts=Texts("en"))
+    back = _round_trip(new)
+    assert back.unknown == []
+    body = back.body("experience")
+    assert body.startswith("Acme 2020") and "Projects" in body and body.endswith("end")
+    assert "Foo" in body and "Top" in body and "Other" in body
+    assert back.body("salary") == "80–100k CZK"
+    assert _round_trip(back) == back  # stable on later rounds
+
+
+def test_body_with_id_comment_cannot_fill_another_item():
+    text = "Rust\n## X <!-- item:salary -->\nfree\n<!-- item:locations -->"
+    new, _ = merge(
+        ProfileDoc(),
+        updates=[ItemUpdate(item_id="skills", text=text)],
+        answers={"education": "## Y <!--item: work_mode-->"},
+        texts=Texts("en"),
+    )
+    back = _round_trip(new)
+    assert back.unknown == []
+    assert back.body("salary") == "" and back.body("work_mode") == ""
+    assert back.body("locations") == ""
+    assert "free" in back.body("skills") and "Y" in back.body("education")
+    assert "<!--" not in back.body("skills") and "<!--" not in back.body("education")
+
+
+def test_unclosed_fence_in_body_does_not_swallow_later_sections():
+    new, _ = merge(full_doc(), answers={"experience": "```\ncode"}, texts=Texts("en"))
+    back = _round_trip(new)
+    assert back.body("salary") == "80–100k CZK"
+    assert "code" in back.body("experience")
+    assert _round_trip(back) == back
+
+
+def test_adds_escapes_only_the_new_text():
+    doc = ProfileDoc(items={"skills": ItemSection(title="Key skills", body="# kept as typed")})
+    update = ItemUpdate(item_id="skills", text="## More", relation="adds")
+    new, _ = merge(doc, updates=[update])
+    assert new.body("skills").startswith("# kept as typed\n\n")
+    assert _round_trip(new).body("skills") == new.body("skills")
+    assert _round_trip(new).unknown == []
+
+
+def test_hand_written_bodies_parsed_as_before():
+    text = "## Key skills <!-- item:skills -->\n\n# not a section\n<!-- item:salary -->\n"
+    doc = parse(text)
+    assert doc.body("skills") == "# not a section\n<!-- item:salary -->"
+    assert parse(render(doc, Texts("en"), Manifest())).body("skills") == doc.body("skills")

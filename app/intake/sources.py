@@ -40,10 +40,11 @@ import httpx
 from pydantic import ValidationError
 
 from app.errors import LocalizedError
-from app.files import write_private
+from app.files import private_dir, write_private
 from app.guard import GuardUnavailable, Scorer, check
 from app.guard.quarantine import QuarantineError
 from app.guard.rules import extract_html
+from app.intake.profile import PROFILE_DIR
 from app.messages import short_error
 from app.schemas.sources import (
     Manifest,
@@ -56,7 +57,6 @@ from app.schemas.sources import (
 if TYPE_CHECKING:
     from app.tools.context import ToolContext
 
-PROFILE_DIR = "profile"
 SOURCES_DIR = Path(PROFILE_DIR) / "sources"
 MANIFEST_FILE = "manifest.json"
 TEXT_FILE = "text.md"
@@ -108,16 +108,11 @@ def manifest_path(workspace: Path) -> Path:
     return sources_dir(workspace) / MANIFEST_FILE
 
 
-def _private_dir(path: Path) -> None:
-    path.mkdir(mode=0o700, exist_ok=True)
-    path.chmod(0o700)
-
-
 def ensure_sources_dir(workspace: Path) -> Path:
     """`profile/` and `profile/sources/`, mode 0700 (T7)."""
-    _private_dir(workspace / PROFILE_DIR)
+    private_dir(workspace / PROFILE_DIR)
     root = sources_dir(workspace)
-    _private_dir(root)
+    private_dir(root)
     return root
 
 
@@ -373,8 +368,7 @@ def _store(
     root = ensure_sources_dir(workspace)
     slug = _unique_slug(_base_slug(kind, final_url or origin), manifest, root)
     folder = root / slug
-    folder.mkdir(mode=0o700)
-    folder.chmod(0o700)
+    private_dir(folder, exist_ok=False)
     entry = ManifestEntry(
         slug=slug,
         origin=origin,

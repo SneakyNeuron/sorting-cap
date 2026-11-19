@@ -6,12 +6,29 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.intake.checklist import Group, ItemId
 from app.schemas.base import ToolInput, ToolOutput
 from app.schemas.sources import SourceType
 
 if TYPE_CHECKING:
     from app.tools.context import ToolContext
+
+# The stable ids used in the `<!-- item:<id> -->` heading comments of `profile.md` (T7),
+# in R12 order; `app/intake/checklist.py` builds the checklist from them.
+ItemId = Literal[
+    "target_roles",
+    "experience",
+    "skills",
+    "education",
+    "languages",
+    "cv",
+    "salary",
+    "contract_type",
+    "locations",
+    "work_mode",
+    "start_date",
+    "industries",
+]
+Group = Literal["must", "nice"]
 
 # How new text for an already filled item relates to it (T8): ignored, appended or a conflict.
 Relation = Literal["match", "adds", "contradicts"]
@@ -51,8 +68,8 @@ class ProfileDoc(BaseModel):
     items: dict[ItemId, ItemSection] = Field(default_factory=dict)
     unknown: list[UnknownSection] = Field(default_factory=list)
 
-    def body(self, item_id: str) -> str:
-        section = self.items.get(item_id)  # type: ignore[call-overload]
+    def body(self, item_id: ItemId) -> str:
+        section = self.items.get(item_id)
         return section.body if section else ""
 
 

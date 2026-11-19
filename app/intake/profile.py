@@ -10,7 +10,9 @@ the manifest (links to the sources flagged `cv`); hand edits to it are overwritt
 Merge rule (R13), per round: an answer to an item's question replaces the item; text
 from sources or the introduction fills empty items only. For a filled item the
 extraction's relation decides: `match` is ignored, `adds` is appended as a new
-paragraph, `contradicts` leaves the item as is and is reported as a conflict.
+paragraph, `contradicts` leaves the item as is and is reported as a conflict. Every
+text the merge writes into a body goes through `safe_body` first, so an answer or an
+extracted value cannot open a new section or fill another item when read back.
 """
 
 from __future__ import annotations
@@ -20,11 +22,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from app.errors import LocalizedError
-from app.files import write_private
+from app.files import private_dir, write_private
 from app.intake.checklist import CV_ITEM, ITEMS, is_item_id
 from app.messages import short_error
 from app.schemas.profile import (
     Conflict,
+    ItemId,
     ItemSection,
     ItemUpdate,
     MergeResult,
@@ -36,10 +39,11 @@ from app.texts import Texts
 
 PROFILE_DIR = "profile"
 PROFILE_FILE = "profile.md"
-FILTER_FILE = "listing_filter_file.md"
 
 _ID_COMMENT = re.compile(r"<!--\s*item:\s*([A-Za-z0-9_-]+)\s*-->")
 _FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+_HEADING = re.compile(r"^( {0,3})(#{1,2})(?=[ \t]|$)")
+_COMMENT = re.compile(r"<!--(?=\s*item\s*:)", re.IGNORECASE)
 
 
 class ProfileError(LocalizedError):
@@ -48,10 +52,6 @@ class ProfileError(LocalizedError):
 
 def profile_path(workspace: Path) -> Path:
     return workspace / PROFILE_DIR / PROFILE_FILE
-
-
-def filter_path(workspace: Path) -> Path:
-    return workspace / FILTER_FILE
 
 
 # --- parse -------------------------------------------------------------------------
@@ -82,7 +82,7 @@ def _strip_blank(lines: list[str]) -> str:
 def parse(text: str) -> ProfileDoc:
     header, sections = _blocks(text.replace("\r\n", "\n"))
     doc = ProfileDoc(header=_strip_blank(header))
-    last: str | None = None
+    last: ItemId | None = None
     for lines in sections:
         heading, body = lines[0], lines[1:]
         match = _ID_COMMENT.search(heading)
@@ -129,7 +129,7 @@ def render(doc: ProfileDoc, texts: Texts, manifest: Manifest) -> str:
         if unknown.after is None:
             parts.append(unknown.raw)
     for item in ITEMS:
-        section = doc.items.get(item.id)  # type: ignore[call-overload]
+        section = doc.items.get(item.id)
         title = (section.title if section else "") or item.title(texts)
         body = cv_body(manifest) if item.id == CV_ITEM else (section.body if section else "")
         heading = f"## {title} <!-- item:{item.id} -->"
@@ -140,9 +140,7 @@ def render(doc: ProfileDoc, texts: Texts, manifest: Manifest) -> str:
 
 def save_profile(workspace: Path, doc: ProfileDoc, texts: Texts, manifest: Manifest) -> Path:
     """Write `profile.md` atomically (0600) under a 0700 `profile/` (T7)."""
-    directory = workspace / PROFILE_DIR
-    directory.mkdir(mode=0o700, exist_ok=True)
-    directory.chmod(0o700)
+    private_dir(workspace / PROFILE_DIR)
     path = profile_path(workspace)
     write_private(path, render(doc, texts, manifest))
     return path
@@ -151,14 +149,14 @@ def save_profile(workspace: Path, doc: ProfileDoc, texts: Texts, manifest: Manif
 # --- items -------------------------------------------------------------------------
 
 
-def is_filled(doc: ProfileDoc, item_id: str, manifest: Manifest) -> bool:
+def is_filled(doc: ProfileDoc, item_id: ItemId, manifest: Manifest) -> bool:
     """CV: a source flagged `cv` exists; any other item: its section is not empty (R12)."""
     if item_id == CV_ITEM:
         return any(e.cv for e in manifest.sources)
     return bool(doc.body(item_id).strip())
 
 
-def missing_items(doc: ProfileDoc, manifest: Manifest) -> list[str]:
+def missing_items(doc: ProfileDoc, manifest: Manifest) -> list[ItemId]:
     """Missing item ids in R12 order (must-know first, then nice-to-have)."""
     return [i.id for i in ITEMS if not is_filled(doc, i.id, manifest)]
 
@@ -167,11 +165,33 @@ def _norm(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def _set(doc: ProfileDoc, item_id: str, body: str, texts: Texts | None) -> None:
-    section = doc.items.get(item_id)  # type: ignore[call-overload]
+def safe_body(text: str) -> str:
+    """`text` made safe to write as an item body the app sets (an answer, an extracted
+    value): it cannot start a section or carry an id comment when the file is read back.
+
+    Outside code fences a `# ` or `## ` line is escaped (`\\## `); every `<!-- item:`
+    becomes `&lt;!-- item:`; a fence left open is closed; line breaks become `\\n`.
+    Hand-written bodies read from the file are not passed through this.
+    """
+    lines: list[str] = []
+    fence: str | None = None
+    for line in _COMMENT.sub("&lt;!--", text).splitlines():  # the line breaks `parse` sees
+        match = _FENCE.match(line)
+        if match:
+            fence = None if fence == match.group(1) else (fence or match.group(1))
+        elif fence is None:
+            line = _HEADING.sub(lambda m: f"{m.group(1)}\\{m.group(2)}", line)
+        lines.append(line)
+    if fence is not None:
+        lines.append(fence)
+    return "\n".join(lines)
+
+
+def _set(doc: ProfileDoc, item_id: ItemId, body: str, texts: Texts | None) -> None:
+    section = doc.items.get(item_id)
     if section is None:
         title = texts.message(f"profile.item.{item_id}.title") if texts else ""
-        doc.items[item_id] = ItemSection(title=title, body=body)  # type: ignore[index]
+        doc.items[item_id] = ItemSection(title=title, body=body)
     else:
         section.body = body
 
@@ -194,7 +214,7 @@ def merge(
     new = doc.model_copy(deep=True)
     conflicts: list[Conflict] = []
     for update in updates:
-        text = update.text.strip()
+        text = safe_body(update.text.strip())
         if not text or update.item_id == CV_ITEM:
             continue
         current = new.body(update.item_id).strip()
@@ -213,13 +233,13 @@ def merge(
             )
     answered: set[str] = set()
     for item_id, answer in (answers or {}).items():
-        text = answer.strip()
+        text = safe_body(answer.strip())
         if not text or item_id == CV_ITEM or not is_item_id(item_id):
             continue
         _set(new, item_id, text, texts)
         answered.add(item_id)
     changed = [i.id for i in ITEMS if new.body(i.id).strip() != doc.body(i.id).strip()]
     return new, MergeResult(
-        changed=changed,  # type: ignore[arg-type]
+        changed=changed,
         conflicts=[c for c in conflicts if c.item_id not in answered],
     )

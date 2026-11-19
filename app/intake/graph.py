@@ -16,7 +16,8 @@ leaves it as it was, and sources copied so far stay with `extracted` false, so t
 round extracts them. `write` merges (answers replace, sources and the introduction fill,
 R13), saves `profile.md` and only then marks the extracted sources. `filter`
 regenerates `listing_filter_file.md` when the profile changed or the file is missing
-(R14, T9); on a model error the previous file is kept and the summary notes it.
+(R14, T9); on a model error, or a Ctrl-C during that call, the previous file is kept
+and the summary notes it.
 """
 
 from __future__ import annotations
@@ -297,8 +298,8 @@ def build_graph(
             mark_extracted(ctx.workspace, r.extracted)
         result = RoundResult(
             sources=[SourceResult.model_validate(s) for s in r.sources],
-            changed=changed,  # type: ignore[arg-type]
-            missing=missing_items(new_doc, manifest),  # type: ignore[arg-type]
+            changed=changed,
+            missing=missing_items(new_doc, manifest),
             conflicts=merged.conflicts,
             notes=[RoundNote.model_validate(n) for n in r.notes],
             extracted=r.extracted if written else [],
@@ -394,16 +395,22 @@ def run_round(
     headless: bool = False,
     cwd: Path | None = None,
     scorer: Scorer | None = None,
+    model: BaseChatModel | None = None,
 ) -> RoundResult:
     """Run one intake round; in chat, answer each interrupt with `ctx.text()`.
 
-    Ctrl-C or Ctrl-D at a prompt cancels the round: `profile.md` is not written, the
-    result has `cancelled` set and lists the sources handled so far. Batch-level source
-    errors (`SourcesError`, workspace write failures) propagate to the caller.
+    `model` is the chat model for every call of the round; by default it is built with
+    `ctx.model_factory`. Ctrl-C or Ctrl-D at a prompt cancels the round: `profile.md` is
+    not written, the result has `cancelled` set and lists the sources handled so far.
+    A Ctrl-C during the `filter` node comes after `write` saved the round: its result
+    is returned, not cancelled, with a `filter_interrupted` note (the filter file is
+    left as it was). Batch-level source errors (`SourcesError`, workspace write
+    failures) propagate to the caller.
     """
     from langgraph.types import Command
 
-    model = ctx.model_factory(ctx.settings, ctx.credentials)
+    if model is None:
+        model = ctx.model_factory(ctx.settings, ctx.credentials)
     graph = build_graph(ctx, model, cwd=cwd, scorer=scorer)
     config = {"configurable": {"thread_id": uuid.uuid4().hex}, "recursion_limit": RECURSION_LIMIT}
     payload: RoundState = {"headless": headless, "specs": [s for s in sources if s.strip()]}
@@ -417,6 +424,17 @@ def run_round(
             out = graph.invoke(Command(resume=answer), config)
     except (KeyboardInterrupt, EOFError):
         values = graph.get_state(config).values
+        if values.get("result"):  # stopped in `filter`: `write` already saved the round
+            result = RoundResult.model_validate(values["result"])
+            result.filter_written = False
+            result.notes.append(
+                RoundNote(
+                    kind="filter_interrupted",
+                    subject=ctx.msg("intake.origin.filter_sources"),
+                    text=ctx.msg("intake.note.filter_interrupted"),
+                )
+            )
+            return result
         return RoundResult(
             cancelled=True,
             sources=[SourceResult.model_validate(s) for s in values.get("sources", [])],

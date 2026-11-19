@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from app.errors import LocalizedError
+from app.files import private_dir
 from app.texts import workspace_note
 
 ENV_VAR = "SORTINGCAP_WORKSPACE"
@@ -41,8 +42,7 @@ def ensure_workspace(env: Mapping[str, str] | None = None) -> Path:
     try:
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.mkdir(mode=0o700)
-            path.chmod(0o700)
+            private_dir(path, exist_ok=False)
     except OSError as exc:
         raise WorkspaceError(
             "workspace.create_failed", path=str(path), detail=exc.strerror or str(exc)

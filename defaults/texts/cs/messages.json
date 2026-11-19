@@ -53,6 +53,7 @@
   "intake.ask.intro": "Teď mi o sobě něco řekni, volně, pár větami (prázdné přeskočí):",
   "intake.ask.source_more": "Další zdroj (prázdný řádek pro pokračování):",
   "intake.ask.sources": "Nejdřív zdroje: cesty k souborům (.txt, .md, .pdf, .html) nebo URL, jeden na řádek. Prázdný řádek pro pokračování.\nZdroj:",
+  "intake.note.filter_interrupted": "Generování souboru filtru bylo přerušeno; profil je uložený, soubor filtru zůstává, jak byl, a vygeneruje se příští kolo.",
   "intake.note.filter_text_missing": "Uložený text zdroje {origin} nejde přečíst; do souboru filtru nebyl zahrnut.",
   "intake.note.model_error_answer": "Model nepřečetl tvou odpověď na „{title}“ ({detail}); nechávám ji, jak jsi ji napsal.",
   "intake.note.model_error_filter": "Model nevygeneroval soubor filtru ({detail}); případný předchozí zůstává.",

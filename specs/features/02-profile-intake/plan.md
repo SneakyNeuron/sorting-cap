@@ -83,6 +83,8 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - `profile.md` deleted by hand → treated as empty; the next round recreates it.
 - `profile.md` with a section whose id comment was removed → kept as an unknown section; the item counts as missing and is asked again.
 - Ctrl-C or Ctrl-D during a question → the round is cancelled; sources already copied stay, and the profile and filter file are unchanged.
+- Ctrl-C during the filter generation → `profile.md` is already written; the summary reports the round with a "filter generation interrupted" note, the old filter file is kept and regenerated next round (exit 1 headless).
+- An answer or extracted value containing `## ` lines or `<!-- item:… -->` comments → escaped when written; it stays in its item and fills no other.
 - The quarantine key is removed from `.env` → listing still works (reports are plaintext); viewing and release fail with a message; nothing is deleted.
 - A released item's source is a dropped-in `.html` → ingested from the decrypted bytes; the original file is no longer in `sources/`, so it is not re-scanned.
 - A very long PDF → text cut at the budget and noted in the summary.

@@ -33,7 +33,7 @@ from pydantic import ValidationError
 
 from app.credentials import Credentials
 from app.errors import LocalizedError
-from app.files import write_private
+from app.files import private_dir, write_private
 from app.schemas.guard import QuarantineReport
 
 QUARANTINE_DIR = "quarantine"
@@ -62,11 +62,6 @@ class QuarantineKeyLost(QuarantineKeyMissing):
         QuarantineError.__init__(
             self, "quarantine.key_lost", name=QUARANTINE_KEY, count=count, dir=QUARANTINE_DIR
         )
-
-
-def _private_dir(path: Path) -> None:
-    path.mkdir(mode=0o700, exist_ok=True)
-    path.chmod(0o700)
 
 
 class Quarantine:
@@ -117,15 +112,14 @@ class Quarantine:
         return path
 
     def _new_dir(self, now: datetime) -> tuple[str, Path]:
-        _private_dir(self.root)
+        private_dir(self.root)
         while True:
             item_id = f"{now:%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
             path = self.root / item_id
             try:
-                path.mkdir(mode=0o700)
+                private_dir(path, exist_ok=False)
             except FileExistsError:
                 continue
-            path.chmod(0o700)
             return item_id, path
 
     def create(

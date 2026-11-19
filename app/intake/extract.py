@@ -78,7 +78,7 @@ def extract(
 def to_updates(extraction: Extraction, origin: str, *, skip: str | None = None) -> list[ItemUpdate]:
     """Fill-only updates for every extracted item except `skip` (the answered one)."""
     return [
-        ItemUpdate(item_id=name, text=value.text.strip(), relation=value.relation, origin=origin)  # type: ignore[arg-type]
+        ItemUpdate(item_id=name, text=value.text.strip(), relation=value.relation, origin=origin)
         for name, value in extraction.values()
         if name != skip
     ]

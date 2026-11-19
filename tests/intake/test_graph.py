@@ -331,3 +331,21 @@ def test_unchanged_round_does_not_rewrite_profile(en):
     result = run_round(ctx)
     assert not result.profile_written and not result.profile_changed
     assert path.read_bytes() == before
+
+
+def test_ctrl_c_during_filter_reports_the_written_round(en, monkeypatch):
+    """`write` saved `profile.md` before the filter call; the result says so (validation fix)."""
+    monkeypatch.setattr("app.intake.graph.needs_filter", lambda *_a, **_k: True)
+
+    def interrupted(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("app.intake.graph.generate", interrupted)
+    model = structured_model(Extraction(target_roles=value("Backend")))
+    ctx, _, _ = ctx_for(en, model, "", "", "Backend", "done")
+    result = run_round(ctx)
+    assert not result.cancelled and result.profile_written and result.changed == ["target_roles"]
+    assert not result.filter_written
+    assert [n.kind for n in result.notes] == ["filter_interrupted"]
+    assert result.notes[0].text == EN.message("intake.note.filter_interrupted")
+    assert load_profile(en).body("target_roles") == "Backend"

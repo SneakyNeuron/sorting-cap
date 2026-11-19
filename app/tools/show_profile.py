@@ -8,11 +8,10 @@ source's `text.md` or anything in `quarantine/`.
 from __future__ import annotations
 
 from app.intake.checklist import CV_ITEM, ITEMS
-from app.intake.filter_file import strip_profile_hash
+from app.intake.filter_file import filter_path, strip_profile_hash
 from app.intake.profile import (
     ProfileError,
     cv_body,
-    filter_path,
     is_filled,
     load_profile,
     profile_path,
@@ -46,11 +45,11 @@ def handle(ctx: ToolContext, inputs: ShowProfileInput) -> ShowProfileOutput:
         manifest, manifest_error = Manifest(), exc.text(ctx.texts)
     views = []
     for item in ITEMS:
-        section = doc.items.get(item.id)  # type: ignore[call-overload]
+        section = doc.items.get(item.id)
         text = cv_body(manifest) if item.id == CV_ITEM else doc.body(item.id)
         views.append(
             ProfileItemView(
-                id=item.id,  # type: ignore[arg-type]
+                id=item.id,
                 group=item.group,
                 title=(section.title if section else "") or item.title(ctx.texts),
                 text=text,

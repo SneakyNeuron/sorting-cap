@@ -10,8 +10,9 @@ from helpers import make_ctx, structured_model
 
 from app.intake import filter_file as ff
 from app.intake.extract import CHAR_BUDGET
+from app.intake.filter_file import filter_path
 from app.intake.graph import run_round
-from app.intake.profile import filter_path, save_profile
+from app.intake.profile import save_profile
 from app.intake.sources import sources_dir
 from app.schemas.filter import FilterFile
 from app.schemas.intake import ExtractedValue, Extraction

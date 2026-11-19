@@ -80,7 +80,7 @@ uv run sortingcap run add-information --source ~/cv.pdf --source https://example
 uv run sortingcap run add-information          # only dropped-in files and unfinished sources
 ```
 
-`-add-information --source …` in chat does the same. Without a configured model it stops before copying anything, with a hint to run `-setup` (exit 1). Exit 1 also when a `--source` you named fails (not found, unreadable, unsupported, fetch error, empty text) or a URL / `.html` source is refused because the classifier is missing; the other sources are still processed and the summary is printed. Errors on dropped-in files are only reported.
+`-add-information --source …` in chat does the same. Without a configured model it stops before copying anything, with a hint to run `-setup` (exit 1). Exit 1 also when a `--source` you named fails (not found, unreadable, unsupported, fetch error, empty text) or a URL / `.html` source is refused because the classifier is missing, and when the filter file could not be regenerated (a model error, or Ctrl-C during that step; `profile.md` is already saved); the other sources are still processed and the summary is printed. Errors on dropped-in files are only reported.
 
 ### Profile files
 

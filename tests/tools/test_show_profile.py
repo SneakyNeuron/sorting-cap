@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 from helpers import make_ctx
 
-from app.intake.profile import FILTER_FILE, save_profile
+from app.intake.filter_file import FILTER_FILE
+from app.intake.profile import save_profile
 from app.intake.sources import save_manifest, sources_dir
 from app.schemas.profile import ItemSection, ProfileDoc, ShowProfileInput
 from app.schemas.sources import Manifest, ManifestEntry

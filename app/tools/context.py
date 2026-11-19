@@ -194,6 +194,11 @@ class ToolContext:
             self.prompter = HeadlessPrompter(lambda: self.texts)
 
     @property
+    def is_headless(self) -> bool:
+        """The headless runner's prompter: no questions, no downloads (R8)."""
+        return isinstance(self.prompter, HeadlessPrompter)
+
+    @property
     def texts(self) -> Texts:
         return Texts(self.settings.language)
 

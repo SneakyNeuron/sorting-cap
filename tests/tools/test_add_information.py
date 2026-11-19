@@ -13,7 +13,8 @@ from helpers import NoPrompts, ScriptedPrompter, make_ctx, structured_model
 
 from app.guard import classifier as clf
 from app.guard.quarantine import QUARANTINE_DIR
-from app.intake.profile import filter_path, load_profile, profile_path, save_profile
+from app.intake.filter_file import filter_path
+from app.intake.profile import load_profile, profile_path, save_profile
 from app.intake.sources import load_manifest, manifest_path, sources_dir
 from app.schemas.filter import FilterFile
 from app.schemas.intake import AddInformationInput, ExtractedValue, Extraction
@@ -427,3 +428,19 @@ def test_cancelled_url_source_extracted_next_run_without_refetch(en, classifier)
     assert fetched == ["https://me.example/cv"]
     assert load_manifest(en).sources[0].extracted is True
     assert load_profile(en).body("locations") == "Brno"
+
+
+def test_filter_interrupted_round_is_reported_and_incomplete(en, monkeypatch):
+    def interrupted(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("app.intake.graph.generate", interrupted)
+    prompter = ScriptedPrompter("", "", "Backend", "done")
+    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: structured_model(roles("x")))
+    out = handle(ctx, AddInformationInput())
+    assert not out.cancelled and out.profile_written and out.incomplete
+    out.render(ctx)
+    text = buf.getvalue()
+    assert EN.message("intake.note.filter_interrupted")[:30] in text
+    assert EN.message("add_information.cancelled")[:20] not in text
+    assert EN.message("add_information.summary.filter_kept")[:20] not in text
