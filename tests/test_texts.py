@@ -132,7 +132,7 @@ def test_dynamic_message_key_families_complete():
 
     expected = set()
     for item_id in ITEM_IDS:
-        expected |= {f"profile.item.{item_id}.title", f"profile.item.{item_id}.question"}
+        expected.add(f"profile.item.{item_id}.title")
     expected |= {f"filter.section.{key}" for key in SECTIONS}
     expected |= {f"intake.note.{kind}" for kind in get_args(NoteKind)}
     status = QuarantineReport.model_fields["status"].annotation
@@ -152,3 +152,55 @@ def test_tour_and_system_prompt_mention_intake_commands(lang):
     for text in (texts.prewritten("tour"), texts.prompt("chat", "system")):
         assert "/add-information" in text
         assert "/show-profile" in text
+
+
+# Phase 2 keys that only served the scripted dialog (Phase 3 R16).
+REMOVED_KEYS = (
+    "intake.ask.",
+    "intake.words.next",
+    '.question"',
+    ".question(",
+    "intake.origin.intro",
+    "intake.origin.answer",
+    "model_error_intro",
+    "model_error_answer",
+    "question_key",
+)
+
+
+def test_scripted_dialog_keys_removed_from_catalogs():
+    for lang in LANGUAGES:
+        keys = message_keys(lang)
+        stale = sorted(
+            k
+            for k in keys
+            if k.startswith("intake.ask.")
+            or k == "intake.words.next"
+            or (k.startswith("profile.item.") and k.endswith(".question"))
+            or k in ("intake.origin.intro", "intake.origin.answer")
+            or k in ("intake.note.model_error_intro", "intake.note.model_error_answer")
+        )
+        assert not stale, (lang, stale)
+
+
+def test_scripted_dialog_keys_not_referenced_in_code_texts_or_prompts():
+    from app.paths import REPO_ROOT
+
+    roots = [REPO_ROOT / "app", TEXTS_DIR, PROMPTS_DIR, REPO_ROOT / "tests"]
+    found = []
+    for root in roots:
+        for path in root.rglob("*"):
+            if path.suffix not in (".py", ".md", ".json") or path.name == "test_texts.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            for key in REMOVED_KEYS:
+                if key in text:
+                    found.append((str(path.relative_to(REPO_ROOT)), key))
+            if '"question"' in text and path.parent.name == "intake":
+                found.append((str(path.relative_to(REPO_ROOT)), '"question"'))
+    assert not found, found
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_extraction_prompt_has_no_question_input(lang):
+    assert "`question`" not in Texts(lang).prompt("intake", "extract")

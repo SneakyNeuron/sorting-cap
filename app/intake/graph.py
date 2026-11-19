@@ -52,7 +52,7 @@ from app.intake.sources import (
     set_cv,
     unextracted,
 )
-from app.intake.status import holes, load_status, now_utc, save_status
+from app.intake.status import holes, now_utc, save_status
 from app.messages import escape_controls, say, short_error
 from app.schemas.intake import RoundResult, RoundState
 from app.schemas.intake_agent import RoundData, SourceReport
@@ -119,7 +119,7 @@ class IntakeNodes:
         round_ = RoundContext.open(
             ctx, self.model, cwd=self.cwd, scorer=self.scorer, home=self.home
         )
-        stored = load_status(ctx.workspace).stored
+        stored = round_.stored
         data = round_.data
         data.sources.extend(dropped)
         if headless:
@@ -249,7 +249,7 @@ class IntakeNodes:
         base = data.base
         new_doc, merged = merge(
             base,
-            answers={k: v for k, v in data.answers.items()},
+            answers=data.answers,
             updates=data.updates,
             texts=ctx.texts,
         )

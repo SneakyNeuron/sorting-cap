@@ -104,6 +104,8 @@ class RoundContext:
     # reports of the sources `ingest` handled through this context (not part of the
     # round state): the graph gives them back to the agent after a failed turn
     ingested: list[SourceReport] = field(default_factory=list)
+    # the stored `checklist.json` as `open` read it (`None` when missing or invalid)
+    stored: ChecklistStatus | None = None
 
     @classmethod
     def open(
@@ -121,6 +123,7 @@ class RoundContext:
         loaded = load_status(ctx.workspace)
         started = reconcile(base, load_manifest(ctx.workspace), loaded.stored, now=now_utc())
         round_ = cls(ctx, reader, RoundData(base=base, started=started), cwd, scorer, home)
+        round_.stored = loaded.stored
         if loaded.invalid:
             path = str(checklist_path(ctx.workspace))
             round_.note("status_rebuilt", path, ctx.msg("intake.note.status_rebuilt", path=path))
@@ -129,8 +132,7 @@ class RoundContext:
     # --- views -----------------------------------------------------------------------
 
     def merged(self) -> tuple[ProfileDoc, MergeResult]:
-        answers: dict[str, str] = {k: v for k, v in self.data.answers.items()}
-        return merge(self.data.base, answers=answers, updates=self.data.updates)
+        return merge(self.data.base, answers=self.data.answers, updates=self.data.updates)
 
     def doc(self) -> ProfileDoc:
         """The profile as it would be if the round ended now."""

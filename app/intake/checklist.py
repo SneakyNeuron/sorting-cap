@@ -1,8 +1,7 @@
-"""The profile checklist (R12): item ids, order, must/nice grouping, titles and questions.
+"""The profile checklist (R12): item ids, order, must/nice grouping and titles.
 
-Titles and the prewritten questions are message keys (`profile.item.<id>.title`,
-`profile.item.<id>.question`) in the cs and en catalogs; the LLM never writes a
-question. `ITEMS` is in R12 order: every must-know item, then every nice-to-have item.
+Titles are message keys (`profile.item.<id>.title`) in the cs and en catalogs.
+`ITEMS` is in R12 order: every must-know item, then every nice-to-have item.
 """
 
 from __future__ import annotations
@@ -27,15 +26,8 @@ class Item:
     def title_key(self) -> str:
         return f"profile.item.{self.id}.title"
 
-    @property
-    def question_key(self) -> str:
-        return f"profile.item.{self.id}.question"
-
     def title(self, texts: Texts) -> str:
         return texts.message(self.title_key)
-
-    def question(self, texts: Texts) -> str:
-        return texts.message(self.question_key)
 
 
 ITEMS: tuple[Item, ...] = tuple(
@@ -58,5 +50,5 @@ def items_in_group(group: Group) -> list[Item]:
 
 
 def message_keys() -> list[str]:
-    """Every catalog key the checklist needs (titles and questions of all items)."""
-    return [key for i in ITEMS for key in (i.title_key, i.question_key)]
+    """Every catalog key the checklist needs (the titles of all items)."""
+    return [i.title_key for i in ITEMS]

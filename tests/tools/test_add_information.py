@@ -17,6 +17,7 @@ from helpers import (
     make_ctx,
     structured_model,
     tool_call,
+    tool_calls,
 )
 
 from app.guard.quarantine import QUARANTINE_DIR
@@ -357,7 +358,6 @@ def test_chat_without_source_runs_the_conversation(en, cwd, monkeypatch):
     out = handle(ctx, AddInformationInput())
     questions = [q for _k, q, _ in prompter.asked]
     assert questions == [EN.message("intake.agent.prompt")] * 2
-    assert EN.message("intake.ask.sources") not in buf.getvalue()
     assert "Hi! What are you after?" in buf.getvalue()
     assert out.changed == ["target_roles"] and out.filter_written
     assert model.bound and set(model.bound[0]) == {
@@ -529,3 +529,35 @@ def test_chat_ctrl_d_saves_the_round(en):
     assert not out.cancelled and out.profile_written and out.changed == ["target_roles"]
     out.render(ctx)
     assert str(checklist_path(en)) in " ".join(buf.getvalue().split())
+
+
+@pytest.mark.parametrize("language", ["cs", "en"])
+def test_chat_conversation_summary_in_both_languages(workspace, language):
+    save_settings(workspace, Settings(language=language, provider="ollama", model="m"))
+    texts = Texts(language)
+    model = intake_model(
+        "Hi!",
+        tool_calls(
+            ("record_item", {"item_id": "salary", "text": "80k"}),
+            ("mark_status", {"item_id": "salary", "state": "partial", "note": "no currency"}),
+        ),
+        "Which currency?",
+        reader=structured_model(FILTER),
+    )
+    done = texts.message("intake.words.done").split(",")[-1].strip()
+    ctx, buf = make_ctx(
+        workspace, ScriptedPrompter("80k", done), model_factory=lambda _s, _c: model
+    )
+    out = handle(ctx, AddInformationInput())
+    assert [(h.item_id, h.note) for h in out.partial] == [("salary", "no currency")]
+    assert out.status_written and out.checklist_path == str(checklist_path(workspace))
+    out.render(ctx)
+    text = " ".join(buf.getvalue().split())
+    salary = texts.message("profile.item.salary.title")
+    roles_title = texts.message("profile.item.target_roles.title")
+    assert texts.message("add_information.summary.changed", items=salary) in text
+    assert texts.message("add_information.summary.partial") in text
+    assert f"- {salary}: no currency" in text
+    assert roles_title in text.split(texts.message("add_information.summary.partial"))[0]
+    assert f"{texts.message('add_information.file.checklist')}: {checklist_path(workspace)}" in text
+    assert texts.message("add_information.summary.filter_written") in text

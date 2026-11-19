@@ -167,8 +167,6 @@ class RoundState(TypedDict, total=False):
 
 NoteKind = Literal[
     "truncated",
-    "model_error_answer",
-    "model_error_intro",
     "model_error_source",
     "source_text_missing",
     "model_error_filter",
@@ -228,7 +226,7 @@ class RoundResult(BaseModel):
 
 
 class AddInformationInput(ToolInput):
-    """`--source` (repeatable): ingest these and the dropped-in files, ask no questions."""
+    """`--source` (repeatable): ingest these and the dropped-in files; no conversation."""
 
     source: list[str] = Field(default_factory=list)
 

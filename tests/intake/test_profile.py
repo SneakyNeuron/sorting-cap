@@ -74,12 +74,11 @@ def test_checklist_order_and_groups():
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
-def test_every_item_has_title_and_question(lang):
+def test_every_item_has_a_title(lang):
     texts = Texts(lang)
+    assert message_keys() == [f"profile.item.{i.id}.title" for i in ITEMS]
     for key in message_keys():
         assert texts.message(key).strip(), key
-    for i in ITEMS:
-        assert i.question(texts).rstrip().endswith(("?", "."))
 
 
 # --- render / parse ----------------------------------------------------------------

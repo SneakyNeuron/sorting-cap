@@ -64,9 +64,9 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] Tests (scripted fake tool model + structured fake): full round with facts, an inline path and an inline URL (faked HTTP) in one message; a quarantined URL reported and not in any model input; a missing path reported to the agent; `done`, `hotovo`, Ctrl-D saving; Ctrl-C cancelling with `profile.md` and `checklist.json` unchanged; 3 failures ending and saving with the note; a failed turn followed by a good one keeping earlier records; headless and `--source` exit codes unchanged; filter regenerated after a changed round; the agent's opening turn sees the status from a hand-edited `profile.md`
 
 ## Group 7: Remove the scripted dialog; handler and summary
-- [ ] Remove the scripted-dialog code and its message keys (R16), and the extraction's `question` input with its prompt text (T8)
-- [ ] `/add-information` handler and summary: partial items with hole notes, `checklist.json` among the files (R12); the new keys ("go on", find/confirm prompts, source reports) in cs and en (`intake.agent.*`, `intake.confirm_found`, `intake.report.*`, `intake.tool.*` already added in Group 5)
-- [ ] Tests: summary in cs and en; no removed key referenced anywhere; Phase 2 tool tests still pass where the behaviour is unchanged
+- [x] Remove the scripted-dialog code and its message keys (R16), and the extraction's `question` input with its prompt text (T8)
+- [x] `/add-information` handler and summary: partial items with hole notes, `checklist.json` among the files (R12); the new keys ("go on", find/confirm prompts, source reports) in cs and en (`intake.agent.*`, `intake.confirm_found`, `intake.report.*`, `intake.tool.*` already added in Group 5)
+- [x] Tests: summary in cs and en; no removed key referenced anywhere; Phase 2 tool tests still pass where the behaviour is unchanged
 
 ## Group 8: Texts, docs and specs in sync
 - [ ] Tour "next steps", chat system prompt and `/add-information` help text describe the conversation (cs/en) (R16)

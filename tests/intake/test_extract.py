@@ -19,20 +19,17 @@ def doc() -> ProfileDoc:
     return ProfileDoc(items={"skills": ItemSection(title="Key skills", body="Python")})
 
 
-def test_returns_structured_output_and_sends_items_question_and_text():
+def test_returns_structured_output_and_sends_items_and_text():
     reply = Extraction(skills=ExtractedValue(text="Python, SQL", relation="adds"))
     model = structured_model(reply)
-    outcome = extract(model, EN, doc(), text="I know SQL too", question="skills")
+    outcome = extract(model, EN, doc(), text="I know SQL too")
     assert outcome.extraction == reply and outcome.error is None and not outcome.truncated
     assert model.schemas == [Extraction]
     system, human = model.calls[0]
     assert system.content == EN.prompt("intake", "extract")
     payload = json.loads(human.content)
     assert payload["text"] == "I know SQL too"
-    assert payload["question"] == {
-        "id": "skills",
-        "question": EN.message("profile.item.skills.question"),
-    }
+    assert set(payload) == {"items", "is_source", "text"}
     assert payload["is_source"] is False
     by_id = {i["id"]: i for i in payload["items"]}
     assert by_id["skills"]["current"] == "Python"
@@ -79,14 +76,17 @@ def test_text_over_budget_is_cut_and_flagged():
     assert cut("a" * CHAR_BUDGET) == ("a" * CHAR_BUDGET, False)
 
 
-def test_to_updates_skips_empty_and_answered_items():
+def test_to_updates_skips_empty_items():
     extraction = Extraction(
         skills=ExtractedValue(text=" Go "),
         education=ExtractedValue(text="  "),
         languages=ExtractedValue(text="English C1", relation="match"),
     )
-    updates = to_updates(extraction, "cv.pdf", skip="languages")
-    assert [(u.item_id, u.text, u.origin) for u in updates] == [("skills", "Go", "cv.pdf")]
+    updates = to_updates(extraction, "cv.pdf")
+    assert [(u.item_id, u.text, u.origin) for u in updates] == [
+        ("skills", "Go", "cv.pdf"),
+        ("languages", "English C1", "cv.pdf"),
+    ]
 
 
 def test_to_updates_carries_the_gap_and_the_source_origin():

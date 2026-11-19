@@ -7,8 +7,8 @@ comment (or a second section with an id already seen) is an unknown section, kep
 verbatim after the known section it followed. The CV section is always rendered from
 the manifest (links to the sources flagged `cv`); hand edits to it are overwritten.
 
-Merge rule (R13), per round: an answer to an item's question replaces the item; text
-from sources or the introduction fills empty items only. For a filled item the
+Merge rule (R13), per round: a direct answer (Phase 3 `record_item`) replaces the item;
+text from sources fills empty items only. For a filled item the
 extraction's relation decides: `match` is ignored, `adds` is appended as a new
 paragraph, `contradicts` leaves the item as is and is reported as a conflict. Every
 text the merge writes into a body goes through `safe_body` first, so an answer or an
@@ -210,14 +210,14 @@ def _set(doc: ProfileDoc, item_id: ItemId, body: str, texts: Texts | None) -> No
 def merge(
     doc: ProfileDoc,
     *,
-    answers: Mapping[str, str] | None = None,
+    answers: Mapping[ItemId, str] | None = None,
     updates: Iterable[ItemUpdate] = (),
     texts: Texts | None = None,
 ) -> tuple[ProfileDoc, MergeResult]:
     """Apply one round to a copy of `doc`; `doc` itself is not changed.
 
-    Source and introduction `updates` are applied first, in order, each against the
-    profile as updated so far; then `answers` (item id → answer text) replace their
+    Source `updates` are applied first, in order, each against the profile as updated
+    so far; then `answers` (item id → direct answer, `record_item`) replace their
     items, and conflicts about an answered item are dropped (the answer settles it).
     Empty texts and the CV item (rendered from the manifest) are ignored. A filled
     item with no relation is a conflict unless the text is the same as the item's.
