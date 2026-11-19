@@ -28,11 +28,11 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] Tests: the full suite passes unchanged in behaviour; ruff clean
 
 ## Group 2: mypy in CI and the definition of done
-- [ ] Add mypy (latest stable, pinned) to the dev dependency group; `[tool.mypy]` config as T1, with per-module `ignore_missing_imports` overrides only where a package has no stubs
-- [ ] Fix every error `uv run mypy app` reports (57 on 2026-11-19, in `app/intake/sources.py`, `app/schemas/{quarantine,help}.py`, `app/tools/context.py`, `app/guard/rules.py`, `app/repl.py` and others) by correcting types, not by blanket ignores
-- [ ] CI: `uv run mypy app` step after ruff
-- [ ] Tech stack Quality tooling amended (T10: mypy runs in CI; the "until then" sentence removed)
-- [ ] Tests: suite still passes; `uv run mypy app` clean; a test in `tests/test_project.py` asserts mypy is in the dev group and `[tool.mypy]` has the pydantic plugin
+- [x] Add mypy (latest stable, pinned) to the dev dependency group; `[tool.mypy]` config as T1, with per-module `ignore_missing_imports` overrides only where a package has no stubs
+- [x] Fix every error `uv run mypy app` reports (57 on 2026-11-19, in `app/intake/sources.py`, `app/schemas/{quarantine,help}.py`, `app/tools/context.py`, `app/guard/rules.py`, `app/repl.py` and others) by correcting types, not by blanket ignores
+- [x] CI: `uv run mypy app` step after ruff
+- [x] Tech stack Quality tooling amended (T10: mypy runs in CI; the "until then" sentence removed)
+- [x] Tests: suite still passes; `uv run mypy app` clean; a test in `tests/test_project.py` asserts mypy is in the dev group and `[tool.mypy]` has the pydantic plugin
 
 ## Group 3: Checklist status store
 - [ ] `ChecklistStatus` / `ItemStatus` schemas in `app/schemas/` (T2); `ExtractedValue.gap` with a description (T8), extraction prompt cs/en updated to explain `gap` (the `question` input stays until Group 6, because the Phase 2 `ask` node still passes it)

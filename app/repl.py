@@ -148,8 +148,10 @@ def slash_key_bindings(completer: SlashCompleter) -> KeyBindings:
     bindings = KeyBindings()
 
     def accept(buffer: Buffer) -> None:
-        completion = buffer.complete_state.current_completion
-        buffer.apply_completion(completion)
+        state = buffer.complete_state
+        if state is None or state.current_completion is None:  # the filters rule this out
+            return
+        buffer.apply_completion(state.current_completion)
         buffer.insert_text(" ")
 
     @Condition

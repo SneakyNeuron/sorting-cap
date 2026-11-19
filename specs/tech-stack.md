@@ -64,8 +64,8 @@
 ## Quality tooling
 - Ruff for lint and format (`uv run ruff check`, `uv run ruff format`).
 - Tests: `uv run pytest`.
-- Typechecker: mypy (`uv run mypy app`), run in CI; added in phase 3. Until then the rule above applies to ruff and tests only.
-- CI (GitHub Actions) runs ruff and the offline pytest suite; added in phase 1.
+- Typechecker: mypy (`uv run mypy app`; default mode with the pydantic plugin, `tests/` not checked).
+- CI (GitHub Actions) runs ruff, mypy and the offline pytest suite.
 
 ## Constraints
 - Licence: GPL-3.0; all dependencies must be GPL-compatible, and model licences must allow free redistribution of the app's use.

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, NoReturn, Protocol
 
 from rich.console import Console
 from rich.markup import escape
@@ -84,7 +84,7 @@ class HeadlessPrompter:
     def confirm(self, question: str, default: bool = False) -> bool:
         return self.yes
 
-    def _fail(self, question: str):
+    def _fail(self, question: str) -> NoReturn:
         raise InputUnavailable(self._texts().message("headless.input_needed", question=question))
 
     def choose(self, question: str, choices: list[Choice], default: str | None = None) -> str:
@@ -190,8 +190,13 @@ class ToolContext:
 
     def __post_init__(self) -> None:
         self.settings = load_settings(self.workspace)
+        self._prompts()
+
+    def _prompts(self) -> Prompter:
+        """The prompter; without one, the headless prompter (no questions)."""
         if self.prompter is None:
             self.prompter = HeadlessPrompter(lambda: self.texts)
+        return self.prompter
 
     @property
     def is_headless(self) -> bool:
@@ -217,7 +222,8 @@ class ToolContext:
                 self._runner = CommandRunner(self.workspace)
         return self._runner
 
-    def http_client(self, timeout: float = 10.0) -> httpx.Client:
+    def http_client(self, timeout: float | None = 10.0) -> httpx.Client:
+        """An httpx client over the injected transport; `timeout=None` waits forever."""
         import httpx
 
         return httpx.Client(transport=self.http_transport, timeout=timeout)
@@ -234,13 +240,13 @@ class ToolContext:
 
     # Prompt shortcuts
     def confirm(self, question: str, default: bool = False) -> bool:
-        return self.prompter.confirm(question, default)
+        return self._prompts().confirm(question, default)
 
     def choose(self, question: str, choices: list[Choice], default: str | None = None) -> str:
-        return self.prompter.choose(question, choices, default)
+        return self._prompts().choose(question, choices, default)
 
     def text(self, question, default=None, validate=None) -> str:
-        return self.prompter.text(question, default, validate)
+        return self._prompts().text(question, default, validate)
 
     def secret(self, question: str) -> str:
-        return self.prompter.secret(question)
+        return self._prompts().secret(question)

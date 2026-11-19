@@ -45,17 +45,12 @@ class StructuredOutputError(Exception):
 
 def structured_method(model: Any) -> str | None:
     """The `method` for `with_structured_output` on this model; None for its default."""
-    try:
-        from langchain_ollama import ChatOllama
-    except ImportError:  # pragma: no cover - a declared dependency
-        ChatOllama = None  # noqa: N806
-    try:
-        from langchain_deepseek import ChatDeepSeek
-    except ImportError:  # pragma: no cover - a declared dependency
-        ChatDeepSeek = None  # noqa: N806
-    if ChatOllama is not None and isinstance(model, ChatOllama):
+    from langchain_deepseek import ChatDeepSeek
+    from langchain_ollama import ChatOllama
+
+    if isinstance(model, ChatOllama):
         return "json_schema"
-    if ChatDeepSeek is not None and isinstance(model, ChatDeepSeek):
+    if isinstance(model, ChatDeepSeek):
         return "function_calling"
     return None
 
@@ -86,23 +81,23 @@ def _invoke(runnable: Any, messages: list, sleep: Callable[[float], None]) -> An
     raise AssertionError("unreachable")  # pragma: no cover
 
 
-def _unpack[T: BaseModel](out: Any, schema: type[T]) -> tuple[T | None, BaseException | None, Any]:
-    """`(parsed, error, raw)` from an `include_raw=True` reply (or a plain one)."""
+def _unpack[T: BaseModel](out: Any, schema: type[T]) -> tuple[T | BaseException, Any]:
+    """`(parsed or error, raw)` from an `include_raw=True` reply (or a plain one)."""
     raw = None
     error: BaseException | None = None
     parsed = out
     if isinstance(out, dict) and "raw" in out:
         raw, parsed, error = out.get("raw"), out.get("parsed"), out.get("parsing_error")
     if error is not None:
-        return None, error, raw
+        return error, raw
     if isinstance(parsed, dict):
         try:
             parsed = schema.model_validate(parsed)
         except ValidationError as exc:
-            return None, exc, raw
+            return exc, raw
     if not isinstance(parsed, schema):
-        return None, ValueError("no structured output"), raw
-    return parsed, None, raw
+        return ValueError("no structured output"), raw
+    return parsed, raw
 
 
 def _feedback(raw: Any, error: BaseException, texts: Texts) -> list:
@@ -137,9 +132,10 @@ def invoke_structured[T: BaseModel](
     history = list(messages)
     error: BaseException | None = None
     for attempt in range(1 + PARSE_RETRIES):
-        parsed, error, raw = _unpack(_invoke(runnable, history, wait), schema)
-        if parsed is not None:
-            return parsed
+        outcome, raw = _unpack(_invoke(runnable, history, wait), schema)
+        if not isinstance(outcome, BaseException):
+            return outcome
+        error = outcome
         if attempt < PARSE_RETRIES:
             history.extend(_feedback(raw, error, texts))
     raise StructuredOutputError(str(error).strip() or type(error).__name__)

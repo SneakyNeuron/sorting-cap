@@ -281,6 +281,16 @@ def _merge(base: _Style, top: _Style) -> _Style:
     )
 
 
+def _class_names(el: Tag) -> list[str]:
+    """The element's class names (bs4 gives a list, or a string for odd markup)."""
+    value = el.get("class")
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return value.split()
+    return list(value)
+
+
 class _Selector(NamedTuple):
     tag: str | None
     classes: frozenset[str]
@@ -289,10 +299,7 @@ class _Selector(NamedTuple):
     def matches(self, el: Tag) -> bool:
         if self.tag and el.name != self.tag:
             return False
-        classes = el.get("class") or []
-        if isinstance(classes, str):
-            classes = classes.split()
-        if not self.classes <= set(classes):
+        if not self.classes <= set(_class_names(el)):
             return False
         return not self.ids or self.ids == {el.get("id")}
 
@@ -345,7 +352,8 @@ def _parse_selector(raw: str) -> _Selector | None:
     tag = m.group(1).lower() if m.group(1) else None
     if not m.group(2):
         return _Selector(tag, _EMPTY, _EMPTY)
-    classes, ids = [], []
+    classes: list[str] = []
+    ids: list[str] = []
     for kind, name in _SELECTOR_PART.findall(m.group(2)):
         (classes if kind == "." else ids).append(name)
     return _Selector(tag, frozenset(classes), frozenset(ids))
@@ -436,10 +444,7 @@ class _Sheet:
         """Styles of the rules matching `el`, in source order."""
         if not self.buckets:
             return []
-        classes = el.get("class") or []
-        if isinstance(classes, str):
-            classes = classes.split()
-        keys: list[_Key] = [(".", c) for c in dict.fromkeys(classes)]
+        keys: list[_Key] = [(".", c) for c in dict.fromkeys(_class_names(el))]
         el_id = el.get("id")
         if isinstance(el_id, str):
             keys.append(("#", el_id))

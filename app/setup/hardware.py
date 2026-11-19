@@ -94,4 +94,4 @@ def detect(
 
 
 def is_docker_permission_error(text: str | None) -> bool:
-    return bool(text) and "permission denied" in text.lower()
+    return text is not None and "permission denied" in text.lower()

@@ -92,3 +92,20 @@ def test_default_run_collects_no_live_test():
 def test_live_marker_registered():
     config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["tool"]["pytest"]
     assert any(m.startswith("live:") for m in config["ini_options"]["markers"])
+
+
+def test_mypy_in_dev_group_with_pydantic_plugin():
+    """T1: mypy is a locked dev dependency, configured with the pydantic plugin."""
+    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    dev = project["dependency-groups"]["dev"]
+    assert any(d.split(">")[0].split("=")[0] == "mypy" for d in dev), dev
+    assert "mypy" in _lock_versions()
+    mypy = project["tool"]["mypy"]
+    assert "pydantic.mypy" in mypy["plugins"]
+    assert mypy["python_version"] == "3.12"
+    assert mypy["check_untyped_defs"] is True
+    assert mypy["warn_unused_ignores"] is True
+    assert mypy["warn_redundant_casts"] is True
+    assert "ignore_missing_imports" not in mypy
+    for override in mypy.get("overrides", []):
+        assert override["module"], override

@@ -50,8 +50,28 @@ markers = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-socket>=0.8.1",
     "respx>=0.23.1",
     "ruff>=0.17.5",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# These packages ship neither inline types (py.typed) nor stubs on PyPI.
+[[tool.mypy.overrides]]
+module = [
+    "fsspec",
+    "fsspec.*",
+    "llama_index.readers.file",
+    "llama_index.readers.file.*",
+    "onnxruntime",
+    "onnxruntime.*",
+]
+ignore_missing_imports = true

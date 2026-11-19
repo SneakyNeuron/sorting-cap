@@ -22,6 +22,7 @@ from app.tools.registry import Registry
 
 if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
+    from langgraph.graph.state import CompiledStateGraph
 
 __all__ = ["ChatAgent", "ModelFactory", "NoModelConfigured", "Reply", "default_model_factory"]
 
@@ -42,7 +43,7 @@ def wrap_tools(
     """LangChain tools for the `agent_callable` registry tools, and nothing else."""
     from langchain_core.tools import StructuredTool
 
-    wrapped = []
+    wrapped: list[BaseTool] = []
     for tool in registry.agent_tools():
 
         def _run(_tool=tool, **kwargs: Any) -> str:
@@ -87,7 +88,7 @@ class ChatAgent:
         self.ctx_factory = ctx_factory
         self.model_factory = model_factory
         self.history: list[Any] = []
-        self._agent = None
+        self._agent: CompiledStateGraph[Any, Any, Any, Any] | None = None
         self._key: tuple | None = None
         # Introspection only (how often the agent was rebuilt, which tools it got);
         # nothing in the app reads them, tests do.
@@ -108,28 +109,33 @@ class ChatAgent:
             hashlib.sha256(key.encode()).hexdigest() if key else None,
         )
 
-    def _build(self, settings: Settings, credentials: Credentials) -> None:
+    def _build(
+        self, settings: Settings, credentials: Credentials
+    ) -> CompiledStateGraph[Any, Any, Any, Any]:
         from langchain.agents import create_agent
 
         texts = Texts(settings.language)
         tools = wrap_tools(self.registry, self.ctx_factory, texts)
         self.tool_names = [t.name for t in tools]
-        self._agent = create_agent(
+        agent = create_agent(
             self.model_factory(settings, credentials),
             tools=tools,
             system_prompt=texts.prompt("chat", "system"),
         )
+        self._agent = agent
         self._key = self._settings_key(settings, credentials)
         self.builds += 1
+        return agent
 
     def ask(self, text: str, settings: Settings, credentials: Credentials) -> Reply:
         from langchain_core.messages import AIMessage, HumanMessage
 
         if not settings.provider or not settings.model:
             raise NoModelConfigured
-        if self._agent is None or self._settings_key(settings, credentials) != self._key:
-            self._build(settings, credentials)
-        result = self._agent.invoke({"messages": [*self.history, HumanMessage(text)]})
+        agent = self._agent
+        if agent is None or self._settings_key(settings, credentials) != self._key:
+            agent = self._build(settings, credentials)
+        result = agent.invoke({"messages": [*self.history, HumanMessage(text)]})
         messages = result["messages"]
         self.history = list(messages)
         last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)

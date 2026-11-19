@@ -137,5 +137,10 @@ ModelFactory = Callable[["Settings", "Credentials"], "BaseChatModel"]
 
 
 def default_model_factory(settings: Settings, credentials: Credentials) -> BaseChatModel:
-    """The configured provider's chat model: what the chat agent and tools use by default."""
+    """The configured provider's chat model: what the chat agent and tools use by default.
+
+    Callers check for a configured provider first; without one this is a `KeyError`.
+    """
+    if settings.provider is None:
+        raise KeyError("no provider configured")
     return get_provider(settings.provider).chat_model(settings, credentials)

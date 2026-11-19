@@ -21,7 +21,7 @@ def installed_models(ctx: ToolContext, base_url: str) -> set[str]:
             data = response.json()
     except (httpx.HTTPError, ValueError):
         return set()
-    names = set()
+    names: set[str] = set()
     for model in data.get("models", []):
         names.update(n for n in (model.get("name"), model.get("model")) if n)
     return names

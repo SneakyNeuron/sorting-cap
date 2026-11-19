@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
+from pydantic.json_schema import JsonDict, JsonValue
 
 if TYPE_CHECKING:
     from app.tools.context import ToolContext
@@ -34,6 +35,6 @@ class ToolOutput(BaseModel):
         return self.model_dump_json()
 
 
-def positional(**extra: object) -> dict[str, object]:
+def positional(**extra: JsonValue) -> JsonDict:
     """`json_schema_extra` marking a field as a positional argument."""
     return {"positional": True, **extra}

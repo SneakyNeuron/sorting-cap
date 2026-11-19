@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 from app.credentials import check_value
 from app.providers.base import SetupAborted
@@ -32,6 +32,18 @@ def require_data_notice(ctx: ToolContext, url: str | None = None) -> None:
         raise SetupAborted(ctx.msg("setup.declined"))
 
 
+@overload
+def ask_key(
+    ctx: ToolContext,
+    env_name: str,
+    *,
+    optional: Literal[False] = False,
+    new_host: str | None = None,
+) -> str: ...
+@overload
+def ask_key(
+    ctx: ToolContext, env_name: str, *, optional: bool, new_host: str | None = None
+) -> str | None: ...
 def ask_key(
     ctx: ToolContext, env_name: str, *, optional: bool = False, new_host: str | None = None
 ) -> str | None:

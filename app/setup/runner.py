@@ -83,10 +83,10 @@ class CommandRunner:
             return CommandResult(0, pid=proc.pid)
         try:
             if mode == "interactive":
-                proc = subprocess.run(args, timeout=timeout, check=False, env=full_env)
-                result = CommandResult(proc.returncode)
+                done = subprocess.run(args, timeout=timeout, check=False, env=full_env)
+                result = CommandResult(done.returncode)
             else:
-                proc = subprocess.run(
+                captured = subprocess.run(
                     args,
                     capture_output=True,
                     text=True,
@@ -94,7 +94,7 @@ class CommandRunner:
                     check=False,
                     env=full_env,
                 )
-                result = CommandResult(proc.returncode, proc.stdout, proc.stderr)
+                result = CommandResult(captured.returncode, captured.stdout, captured.stderr)
         except FileNotFoundError as exc:
             result = CommandResult(127, stderr=str(exc))
         except subprocess.TimeoutExpired:
