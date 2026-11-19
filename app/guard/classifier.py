@@ -381,14 +381,21 @@ def offer_download(ctx: ToolContext) -> bool:
 def ensure_classifier(ctx: ToolContext) -> Scorer:
     """A loaded scorer, or `GuardUnavailable` (fail closed, R4, R8).
 
-    Missing in chat: the download is offered once per command run; a no refuses this
-    input and later ones in the same run. Missing headless: refused with the hint to
-    run `-setup` or add the source in chat.
+    Missing in chat: the download is offered once per command run; a no, or a failed
+    download, refuses this input and later ones in the same run. Missing headless:
+    refused with the hint to run `-setup` or add the source in chat.
     """
     if not is_installed(ctx.workspace):
         if is_headless(ctx):
             raise GuardUnavailable("guard.classifier_missing")
-        if ctx.classifier_declined or not offer_download(ctx):
+        if ctx.classifier_declined:
+            raise GuardUnavailable("guard.classifier_declined")
+        try:
+            accepted = offer_download(ctx)
+        except GuardUnavailable:
+            ctx.classifier_declined = True  # a failed download is not offered again
+            raise
+        if not accepted:
             ctx.classifier_declined = True
             raise GuardUnavailable("guard.classifier_declined")
     return load(ctx.workspace)

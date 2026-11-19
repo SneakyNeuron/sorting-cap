@@ -22,6 +22,9 @@ SourceErrorCode = Literal[
     "fetch_type",
     "fetch_too_large",
     "fetch_redirects",
+    "fetch_redirect_private",
+    "fetch_redirect_insecure",
+    "too_large",
     "fetch_failed",
     "quarantine_failed",
 ]

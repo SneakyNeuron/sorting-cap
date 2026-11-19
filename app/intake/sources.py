@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import ipaddress
 import re
 import shutil
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -249,12 +250,62 @@ def user_agent() -> str:
     return f"SortingCap/{version('sortingcap')}"
 
 
+def _is_local_ip(text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_link_local or ip.is_private or ip.is_unspecified
+
+
+def is_local_host(host: str, resolve: Callable[[str], list[str]]) -> bool:
+    """Loopback, link-local, private or unspecified: the literal, `localhost`, or any
+    address the name resolves to. A name that does not resolve is not local."""
+    host = host.strip("[]").rstrip(".").lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return any(_is_local_ip(addr) for addr in resolve(host))
+    return _is_local_ip(host)
+
+
+def _redirect_check(ctx: ToolContext) -> Callable[[httpx.Request], None]:
+    """A request hook refusing a redirect hop from a public host to a local one, or
+    from https to http. The URL the user gave is not checked (it may be local)."""
+    previous: list[httpx.URL] = []
+
+    def hook(request: httpx.Request) -> None:
+        url = request.url
+        if previous:
+            before = previous[-1]
+            if not is_local_host(before.host, ctx.resolve_host) and is_local_host(
+                url.host, ctx.resolve_host
+            ):
+                raise _Failure("fetch_redirect_private", host=url.host)
+            if before.scheme == "https" and url.scheme != "https":
+                raise _Failure("fetch_redirect_insecure")
+        previous.append(url)
+
+    return hook
+
+
 def fetch_url(ctx: ToolContext, url: str) -> Fetched:
-    """GET a page: 20 s timeout, at most 5 redirects and 5 MB, HTML types only (T6)."""
+    """GET a page: 20 s timeout, at most 5 redirects and 5 MB, HTML types only (T6).
+
+    Each redirect hop is checked: public to loopback/link-local/private, and https to
+    http, are refused (per-source errors).
+    """
     headers = {"User-Agent": user_agent(), "Accept": "text/html,application/xhtml+xml"}
     try:
         with ctx.http_client(timeout=FETCH_TIMEOUT) as client:
             client.max_redirects = MAX_REDIRECTS
+            client.event_hooks = {"request": [_redirect_check(ctx)], "response": []}
             with client.stream("GET", url, headers=headers, follow_redirects=True) as response:
                 if not response.is_success:
                     raise _Failure("fetch_status", status=response.status_code)
@@ -464,15 +515,22 @@ def resolve_path(spec: str, cwd: Path | None = None) -> Path:
 
 
 def _read_file(path: Path) -> tuple[SourceType, bytes]:
+    """Type and bytes of a local source; guarded `.html`/`.htm` capped at `MAX_BYTES`."""
     if not path.exists():
         raise _Failure("not_found")
     kind = EXTENSIONS.get(path.suffix.lower())
     if kind is None:
         raise _Failure("unsupported", ext=path.suffix or "(none)")
     try:
-        return kind, path.read_bytes()
+        if kind not in GUARDED_TYPES:
+            return kind, path.read_bytes()
+        with path.open("rb") as fh:
+            raw = fh.read(MAX_BYTES + 1)
     except OSError as exc:
         raise _Failure("unreadable", detail=short_error(exc)) from exc
+    if len(raw) > MAX_BYTES:
+        raise _Failure("too_large", mb=MAX_MB)
+    return kind, raw
 
 
 def ingest_source(

@@ -380,3 +380,23 @@ def test_installed_classifier_is_not_offered(workspace, blobs, fake_load):
     install(workspace, blobs)
     ctx, _ = make_ctx(workspace)  # NoPrompts: any prompt fails the test
     assert isinstance(ensure_classifier(ctx), FakeScorer)
+
+
+@pytest.mark.parametrize("failure", ["http", "checksum"])
+def test_failed_download_is_not_offered_again_in_the_run(workspace, blobs, failure):
+    calls = []
+    if failure == "http":
+        handler = lambda r: httpx.Response(404)  # noqa: E731
+        key = "guard.download_failed"
+    else:
+        handler = server(blobs, calls, override={"onnx/config.json": b"tampered"})
+        key = "guard.download_checksum"
+    prompter = ScriptedPrompter(True, True)
+    ctx, _ = make_ctx(workspace, prompter, handler=handler)
+    with pytest.raises(GuardUnavailable) as first:
+        ensure_classifier(ctx)
+    assert first.value.key == key
+    with pytest.raises(GuardUnavailable) as second:
+        ensure_classifier(ctx)
+    assert second.value.key == "guard.classifier_declined"
+    assert len(prompter.asked) == 1

@@ -77,6 +77,7 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 ## Edge cases
 - The classifier is missing during a chat round with a URL → download offered; on no, that source is refused and the round continues with the others.
 - A URL redirects to another host → the final URL is recorded in `source.url`; the guard checks the final content.
+- A public URL redirects to a loopback, link-local or private address, or from https to http → per-source error, nothing fetched from the target.
 - An HTML page whose visible text is clean but hidden text has an injection → quarantined.
 - The same CV is added twice under different names → the SHA-256 match skips it.
 - `profile.md` deleted by hand → treated as empty; the next round recreates it.

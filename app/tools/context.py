@@ -23,6 +23,17 @@ if TYPE_CHECKING:
     from app.tools.registry import Registry
 
 
+def resolve_host(host: str) -> list[str]:
+    """The IP addresses `host` resolves to; empty when it does not resolve."""
+    import socket
+
+    try:
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError):
+        return []
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
+
+
 class ToolError(UserFacingError):
     """A tool failed; `message` is a user-facing text in the current language."""
 
@@ -165,12 +176,15 @@ class ToolContext:
     env: Mapping[str, str] | None = field(default=None, repr=False)  # may hold real keys
     runner_factory: Callable[[ToolContext], CommandRunner] | None = None
     http_transport: httpx.BaseTransport | None = None
+    # host name to IP addresses, for the redirect checks of URL sources; tests inject one
+    resolve_host: Callable[[str], list[str]] = resolve_host
     # builds the chat model for tools that call the LLM (intake, extraction); tests inject fakes
     model_factory: ModelFactory = default_model_factory
     settings: Settings = field(init=False)
     # keys typed during `-setup`, used for verification, written to `.env` only after it
     pending_keys: dict[str, str] = field(default_factory=dict, init=False, repr=False)
-    # the user declined the classifier download in this command run (R8): offered once
+    # the classifier download was offered in this command run and declined or failed
+    # (R8): offered once
     classifier_declined: bool = field(default=False, init=False)
     _runner: CommandRunner | None = field(default=None, init=False, repr=False)
 

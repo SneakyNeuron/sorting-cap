@@ -606,3 +606,129 @@ def test_cp1250_html_text_extracted_with_diacritics(workspace, cwd):
     result = src.ingest_source(ctx, "stara.html", cwd=cwd, scorer=FakeScorer())
     assert result.status == "added"
     assert src.source_text(workspace, result.slug) == "Vývojář, Brno\n"
+
+
+# --- size cap on local guarded files and redirect safety --------------------------
+
+
+@pytest.mark.parametrize("dropped", [False, True])
+def test_local_html_over_the_size_cap_refused(workspace, cwd, dropped):
+    body = "<html><body>" + "a" * src.MAX_BYTES + "</body></html>"
+    ctx, _ = make_ctx(workspace)
+    if dropped:
+        path = put(src.ensure_sources_dir(workspace), "big.html", body)
+        [result] = src.scan_dropped(ctx, scorer=FakeScorer())
+    else:
+        path = put(cwd, "big.html", body)
+        result = src.ingest_source(ctx, str(path), scorer=FakeScorer())
+    assert result.status == "error" and result.code == "too_large"
+    assert "5 MB" in result.reason
+    assert path.exists()
+
+
+def test_local_text_files_have_no_size_cap(workspace, cwd):
+    path = put(cwd, "big.txt", "Python developer. " * (src.MAX_BYTES // 18 + 10))
+    ctx, _ = make_ctx(workspace)
+    assert src.ingest_source(ctx, str(path)).status == "added"
+
+
+def _redirecting(target: str, *, start_host: str = "public.example"):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == start_host and request.url.path == "/start":
+            return httpx.Response(302, headers={"location": target})
+        return html_response(PAGE)
+
+    return handler
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "http://127.0.0.1/admin",
+        "http://localhost:8080/",
+        "http://app.localhost/",
+        "http://[::1]/",
+        "http://[::ffff:127.0.0.1]/",
+        "http://10.0.0.5/",
+        "http://192.168.1.1/",
+        "http://172.16.0.1/",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://[fe80::1]/",
+        "http://0.0.0.0/",
+        "http://intranet.example/",  # resolves to a private address
+    ],
+)
+def test_redirect_from_public_to_private_refused(workspace, target):
+    ctx, _ = make_ctx(workspace, handler=_redirecting(target))
+    ctx.resolve_host = lambda host: (
+        ["10.1.2.3"] if host == "intranet.example" else ["93.184.216.34"]
+    )
+    result = src.ingest_source(ctx, "http://public.example/start", scorer=FakeScorer())
+    assert result.status == "error" and result.code == "fetch_redirect_private"
+    assert result.reason == ctx.msg("sources.fetch_redirect_private", host=httpx.URL(target).host)
+    assert not src.sources_dir(workspace).exists()
+
+
+def test_redirect_from_https_to_http_refused(workspace):
+    ctx, _ = make_ctx(workspace, handler=_redirecting("http://public.example/page"))
+    result = src.ingest_source(ctx, "https://public.example/start", scorer=FakeScorer())
+    assert result.status == "error" and result.code == "fetch_redirect_insecure"
+    assert result.reason == ctx.msg("sources.fetch_redirect_insecure")
+
+
+def test_redirect_checks_every_hop(workspace):
+    def handler(request: httpx.Request) -> httpx.Response:
+        nxt = {"a.example": "/b", "b.example": "/c"}.get(request.url.host)
+        if nxt:
+            scheme = request.url.scheme
+            host = {"/b": "b.example", "/c": target_host}[nxt]
+            return httpx.Response(302, headers={"location": f"{scheme}://{host}/"})
+        return html_response(PAGE)
+
+    target_host = "192.168.0.1"
+    ctx, _ = make_ctx(workspace, handler=handler)
+    result = src.ingest_source(ctx, "http://a.example/", scorer=FakeScorer())
+    assert result.code == "fetch_redirect_private"
+
+    def downgrade(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "a.example":
+            return httpx.Response(302, headers={"location": "https://b.example/"})
+        if request.url.host == "b.example":
+            return httpx.Response(302, headers={"location": "http://c.example/"})
+        return html_response(PAGE)
+
+    ctx, _ = make_ctx(workspace, handler=downgrade)
+    result = src.ingest_source(ctx, "https://a.example/", scorer=FakeScorer())
+    assert result.code == "fetch_redirect_insecure"
+
+
+def test_typed_local_url_and_local_redirects_allowed(workspace):
+    ctx, _ = make_ctx(
+        workspace, handler=_redirecting("http://127.0.0.1:9000/cv", start_host="localhost")
+    )
+    result = src.ingest_source(ctx, "http://localhost/start", scorer=FakeScorer())
+    assert result.status == "added" and result.final_url == "http://127.0.0.1:9000/cv"
+
+
+def test_redirect_to_public_http_from_http_allowed(workspace):
+    ctx, _ = make_ctx(workspace, handler=_redirecting("http://other.example/cv"))
+    result = src.ingest_source(ctx, "http://public.example/start", scorer=FakeScorer())
+    assert result.status == "added"
+
+
+def test_unresolvable_redirect_host_not_treated_as_private(workspace):
+    ctx, _ = make_ctx(workspace, handler=_redirecting("https://other.example/cv"))
+    ctx.resolve_host = lambda host: []
+    result = src.ingest_source(ctx, "https://public.example/start", scorer=FakeScorer())
+    assert result.status == "added"
+
+
+@pytest.mark.parametrize("lang", ["cs", "en"])
+def test_redirect_messages_localized(workspace, lang):
+    from app.texts import Texts
+
+    texts = Texts(lang)
+    assert "{" not in texts.message("sources.fetch_redirect_private", host="10.0.0.1")
+    assert "10.0.0.1" in texts.message("sources.fetch_redirect_private", host="10.0.0.1")
+    assert texts.message("sources.fetch_redirect_insecure")
+    assert "5" in texts.message("sources.too_large", mb=5)

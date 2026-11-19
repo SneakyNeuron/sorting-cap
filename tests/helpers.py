@@ -221,8 +221,14 @@ def make_ctx(
         runner_factory=lambda _ctx: runner,
         http_transport=httpx.MockTransport(handler) if handler else httpx.MockTransport(_refuse),
         model_factory=model_factory or default_model_factory,
+        resolve_host=_no_dns,
     )
     return ctx, buf
+
+
+def _no_dns(host: str) -> list[str]:
+    """No real lookups in tests: every name is unresolved (treated as public)."""
+    return []
 
 
 def _refuse(request: httpx.Request) -> httpx.Response:

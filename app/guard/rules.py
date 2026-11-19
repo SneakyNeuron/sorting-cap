@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 from bs4.element import CData, Declaration, Doctype, ProcessingInstruction
@@ -149,9 +149,12 @@ _BIDI_EMBED = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
 _BIDI_MARKS = "\u200e\u200f\u061c"
 _INVISIBLE = _ZERO_WIDTH + _BIDI_EMBED + _BIDI_MARKS
 
-_ZERO_WIDTH_IN_WORD = re.compile(rf"(?<=\w)[{_INVISIBLE}]*[{_ZERO_WIDTH}][{_INVISIBLE}]*(?=\w)")
+# A whole run of invisible characters between two word characters. One quantifier
+# only: a run not followed by a word character fails in linear time.
+_INVISIBLE_IN_WORD = re.compile(rf"(?<=\w)[{_INVISIBLE}]+(?=\w)")
 _BIDI_ANYWHERE = re.compile(rf"[{_BIDI_EMBED}]")
-_BIDI_MARK_IN_WORD = re.compile(rf"(?<=\w)[{_INVISIBLE}]*[{_BIDI_MARKS}][{_INVISIBLE}]*(?=\w)")
+_ZERO_WIDTH_SET = frozenset(_ZERO_WIDTH)
+_BIDI_MARK_SET = frozenset(_BIDI_MARKS)
 
 
 def find_invisible_controls(text: str) -> list[str]:
@@ -160,10 +163,17 @@ def find_invisible_controls(text: str) -> list[str]:
     Embedding, override and isolate controls are flagged anywhere; directional marks
     only inside words. Non-breaking spaces, soft hyphens and dashes are typography.
     """
+    zero_width = bidi = False
+    for run in _INVISIBLE_IN_WORD.finditer(text):
+        chars = set(run.group())
+        zero_width = zero_width or not chars.isdisjoint(_ZERO_WIDTH_SET)
+        bidi = bidi or not chars.isdisjoint(_BIDI_MARK_SET)
+        if zero_width and bidi:
+            break
     found = []
-    if _ZERO_WIDTH_IN_WORD.search(text):
+    if zero_width:
         found.append(ZERO_WIDTH_RULE)
-    if _BIDI_ANYWHERE.search(text) or _BIDI_MARK_IN_WORD.search(text):
+    if bidi or _BIDI_ANYWHERE.search(text):
         found.append(BIDI_RULE)
     return found
 
@@ -193,9 +203,18 @@ def match_rules(text: str, *, hidden: bool = False) -> list[str]:
     ]
 
 
+def _match_hidden_only(fragment: str) -> list[str]:
+    normalized = normalize(fragment)
+    return [r.name for r in RULES if r.scope == "hidden" and r.pattern.search(normalized)]
+
+
 # HTML
 
-_SKIP = frozenset({"script", "style", "head", "title", "meta", "link", "base"})
+_SKIP = frozenset({"script", "style", "link", "base"})
+# Read as hidden text wherever they are: `<head>`, `<title>` (also SVG titles) and
+# the `content` of `<meta>`; each child of `<head>` is its own fragment.
+_ALWAYS_HIDDEN = frozenset({"head", "title"})
+_TEXT_ATTRIBUTES = ("alt", "title")
 _HIDDEN_CONTAINERS = frozenset({"noscript", "template"})
 _BLOCK = frozenset(
     {
@@ -205,23 +224,31 @@ _BLOCK = frozenset(
         "summary", "table", "td", "th", "tr", "ul", "caption", "option", "label",
     }
 )  # fmt: skip
-_CSS_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-_CSS_RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+# The page's own CSS read for hiding rules, at most this many characters in total.
+MAX_STYLE_CHARS = 1_000_000
 _SIMPLE_SELECTOR = re.compile(r"^([a-z][a-z0-9]*)?((?:[.#][\w-]+)*)$", re.IGNORECASE)
 _SELECTOR_PART = re.compile(r"([.#])([\w-]+)")
+_ONE_NAME = re.compile(r"([.#])([\w-]+)")
 _ZERO_SIZE = re.compile(r"^-?0*(?:\.0+)?(?:px|em|rem|pt|pc|%|vw|vh|vmin|vmax|ex|ch|mm|cm|in)?$")
 
 
 @dataclass(frozen=True)
 class HtmlText:
-    """Text a browser shows (`visible`) and text it hides (`hidden`), both line-based."""
+    """Text a browser shows (`visible`) and text it hides (`hidden`), both line-based.
+
+    `fragments` is the hidden text split into its unrelated pieces: one per hidden
+    element (outermost), comment, `<head>` child, attribute value and piece of
+    content outside `<body>`. `hidden` is all of them joined.
+    """
 
     visible: str
     hidden: str
+    fragments: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True)
-class _Style:
+# Named tuples, not dataclasses: a page can carry tens of thousands of rules, and
+# tuple construction and hashing run in C.
+class _Style(NamedTuple):
     display_none: bool = False
     visibility: bool | None = None  # False hidden, True visible, None unset
     zero_font: bool | None = None  # True zero, False explicit non-zero, None unset
@@ -254,8 +281,7 @@ def _merge(base: _Style, top: _Style) -> _Style:
     )
 
 
-@dataclass(frozen=True)
-class _Selector:
+class _Selector(NamedTuple):
     tag: str | None
     classes: frozenset[str]
     ids: frozenset[str]
@@ -271,45 +297,180 @@ class _Selector:
         return not self.ids or self.ids == {el.get("id")}
 
 
-def _style_rules(soup: BeautifulSoup) -> list[tuple[_Selector, _Style]]:
-    """Simple tag/class/id rules from the page's own `<style>` blocks that hide."""
+def _strip_css_comments(css: str) -> str:
+    """`/* … */` removed in one pass; an unclosed comment runs to the end."""
+    out, pos = [], 0
+    while (start := css.find("/*", pos)) != -1:
+        out.append(css[pos:start])
+        end = css.find("*/", start + 2)
+        if end == -1:
+            return " ".join(out)
+        out.append(" ")
+        pos = end + 2
+    out.append(css[pos:])
+    return "".join(out)
+
+
+def _css_rules(css: str) -> list[tuple[str, str]]:
+    """`(selectors, declarations)` of every innermost `selectors { declarations }`.
+
+    Linear: split on `}`, then the text after the chunk's last `{` is the body and the
+    text between the `{` before it (or the chunk start) is the selector list. At-rule
+    wrappers such as `@media … {` fall away; a chunk without `{` is no rule.
+    """
     found = []
-    for block in soup.find_all("style"):
-        css = _CSS_COMMENT.sub(" ", block.get_text())
-        for selectors, body in _CSS_RULE.findall(css):
-            style = _parse_declarations(body)
-            if style == _Style():
-                continue
-            for raw in selectors.split(","):
-                selector = raw.strip()
-                m = _SIMPLE_SELECTOR.match(selector)
-                if not selector or selector.startswith("@") or not m:
-                    continue
-                parts = _SELECTOR_PART.findall(m.group(2) or "")
-                found.append(
-                    (
-                        _Selector(
-                            m.group(1).lower() if m.group(1) else None,
-                            frozenset(n for kind, n in parts if kind == "."),
-                            frozenset(n for kind, n in parts if kind == "#"),
-                        ),
-                        style,
-                    )
-                )
+    for chunk in css.split("}")[:-1]:
+        head, sep, body = chunk.rpartition("{")
+        if not sep:
+            continue
+        selectors = head.rpartition("{")[2]
+        if selectors.strip():
+            found.append((selectors, body))
     return found
 
 
+def _parse_selector(raw: str) -> _Selector | None:
+    selector = raw.strip()
+    one = _ONE_NAME.fullmatch(selector)  # fast path: a lone `.class` or `#id`
+    if one:
+        names = frozenset((one.group(2),))
+        return (
+            _Selector(None, names, _EMPTY)
+            if one.group(1) == "."
+            else _Selector(None, _EMPTY, names)
+        )
+    m = _SIMPLE_SELECTOR.match(selector)
+    if not selector or not m:
+        return None
+    tag = m.group(1).lower() if m.group(1) else None
+    if not m.group(2):
+        return _Selector(tag, _EMPTY, _EMPTY)
+    classes, ids = [], []
+    for kind, name in _SELECTOR_PART.findall(m.group(2)):
+        (classes if kind == "." else ids).append(name)
+    return _Selector(tag, frozenset(classes), frozenset(ids))
+
+
+_EMPTY: frozenset[str] = frozenset()
+
+
+_NO_STYLE = _Style()
+
+
+def _style_rules(soup: BeautifulSoup) -> list[tuple[_Selector, _Style]]:
+    """Simple tag/class/id rules from the page's own `<style>` blocks that hide.
+
+    At most `MAX_STYLE_CHARS` of CSS are read; later rules are ignored. Declarations
+    and selectors are parsed once per distinct text.
+    """
+    found = []
+    budget = MAX_STYLE_CHARS
+    styles: dict[str, _Style] = {}
+    selectors_seen: dict[str, _Selector | None] = {}
+    for block in soup.find_all("style"):
+        if budget <= 0:
+            break
+        text = block.get_text()[:budget]
+        budget -= len(text)
+        css = _strip_css_comments(text)
+        for selectors, body in _css_rules(css):
+            style = styles.get(body)
+            if style is None:
+                style = styles[body] = _parse_declarations(body)
+            if style is _NO_STYLE or style == _NO_STYLE:
+                continue
+            for raw in selectors.split(","):
+                if raw in selectors_seen:
+                    selector = selectors_seen[raw]
+                else:
+                    selector = selectors_seen[raw] = _parse_selector(raw)
+                if selector is not None:
+                    found.append((selector, style))
+    return found
+
+
+_HIDE = _Style(display_none=True)
+
+
+def _is_hidden(style: _Style) -> bool:
+    return style.display_none or style.visibility is False or style.zero_font is True
+
+
+_Key = tuple[str, str]
+
+
+def _selector_key(selector: _Selector) -> _Key:
+    """The one bucket a selector is filed under: an id, else a class, else its tag.
+
+    An element that matches the selector carries that key, so looking up only the
+    element's own keys finds every rule that can match it.
+    """
+    if selector.ids:
+        return ("#", min(selector.ids))
+    if selector.classes:
+        return (".", min(selector.classes))
+    return ("", selector.tag or "")
+
+
+class _Sheet:
+    """The page's hiding rules indexed by selector key, in source order.
+
+    Repeated `(selector, style)` pairs keep only their last occurrence: merging the
+    same style again earlier changes nothing (`display:none` accumulates, the other
+    properties are last-wins), so no result changes.
+    """
+
+    def __init__(self, rules: list[tuple[_Selector, _Style]]) -> None:
+        seen: set[tuple[_Selector, _Style]] = set()
+        kept: list[tuple[int, _Selector, _Style]] = []
+        for i in range(len(rules) - 1, -1, -1):  # from the end: the last one is kept
+            rule = rules[i]
+            if rule not in seen:
+                seen.add(rule)
+                kept.append((i, *rule))
+        self.buckets: dict[_Key, list[tuple[int, _Selector, _Style]]] = {}
+        for entry in reversed(kept):
+            self.buckets.setdefault(_selector_key(entry[1]), []).append(entry)
+
+    def styles_for(self, el: Tag) -> list[_Style]:
+        """Styles of the rules matching `el`, in source order."""
+        if not self.buckets:
+            return []
+        classes = el.get("class") or []
+        if isinstance(classes, str):
+            classes = classes.split()
+        keys: list[_Key] = [(".", c) for c in dict.fromkeys(classes)]
+        el_id = el.get("id")
+        if isinstance(el_id, str):
+            keys.append(("#", el_id))
+        keys.append(("", el.name))
+        hits = [
+            (i, style)
+            for key in keys
+            for i, selector, style in self.buckets.get(key, ())
+            if selector.matches(el)
+        ]
+        hits.sort(key=lambda hit: hit[0])
+        return [style for _, style in hits]
+
+
 class _Collector:
+    """Visible text, hidden text and the hidden fragments, in document order.
+
+    A fragment is a list of text pieces; the walk passes the current one down while
+    the text stays hidden, and a hidden element below visible text starts a new one.
+    """
+
     def __init__(self, sheet: list[tuple[_Selector, _Style]]) -> None:
-        self.sheet = sheet
+        self.sheet = _Sheet(sheet)
         self.visible: list[str] = []
         self.hidden: list[str] = []
+        self.fragments: list[list[str]] = []
 
     def _own_style(self, el: Tag) -> _Style:
         style = _Style()
-        for selector, rule_style in self.sheet:
-            if selector.matches(el):
-                style = _merge(style, rule_style)
+        for rule_style in self.sheet.styles_for(el):
+            style = _merge(style, rule_style)
         inline = el.get("style")
         if isinstance(inline, str):
             style = _merge(style, _parse_declarations(inline))
@@ -318,36 +479,103 @@ class _Collector:
             el.has_attr("hidden")
             or (isinstance(aria, str) and aria.strip().lower() == "true")
             or el.name in _HIDDEN_CONTAINERS
+            or el.name in _ALWAYS_HIDDEN
         ):
-            style = _merge(style, _Style(display_none=True))
+            style = _merge(style, _HIDE)
         return style
 
-    def _break(self) -> None:
-        self.visible.append("\n")
+    def _fragment(self) -> list[str]:
+        self.hidden.append("\n")
+        fragment: list[str] = []
+        self.fragments.append(fragment)
+        return fragment
+
+    def _hidden_text(self, text: str, fragment: list[str] | None) -> list[str]:
+        fragment = fragment if fragment is not None else self._fragment()
+        self.hidden.append(text)
+        fragment.append(text)
+        return fragment
+
+    def _standalone(self, text: str) -> None:
+        """A piece of hidden text unrelated to its neighbours (comment, attribute)."""
+        self._hidden_text(text, None)
         self.hidden.append("\n")
 
-    def walk(self, node: Tag, inherited: _Style) -> None:
+    def _break(self, fragment: list[str] | None) -> None:
+        self.visible.append("\n")
+        self.hidden.append("\n")
+        if fragment is not None:
+            fragment.append("\n")
+
+    def _attributes(self, el: Tag) -> None:
+        names = (*_TEXT_ATTRIBUTES, "content") if el.name == "meta" else _TEXT_ATTRIBUTES
+        for name in names:
+            value = el.get(name)
+            if isinstance(value, str) and value.strip():
+                self._standalone(value)
+
+    def visit(self, child: object, inherited: _Style, fragment: list[str] | None) -> None:
+        if isinstance(child, Comment):
+            self._standalone(str(child))
+        elif isinstance(child, CData | Declaration | Doctype | ProcessingInstruction):
+            return
+        elif isinstance(child, NavigableString):
+            if _is_hidden(inherited):
+                self._hidden_text(str(child), fragment)
+            else:
+                self.visible.append(str(child))
+        elif isinstance(child, Tag):
+            if child.name in _SKIP:
+                return
+            self._attributes(child)
+            if child.name == "meta":
+                return
+            style = _merge(inherited, self._own_style(child))
+            if not _is_hidden(style):
+                fragment = None
+            elif fragment is None or child.name == "head":
+                # `<head>`'s children (title, stray text) are unrelated to each other
+                fragment = None if child.name == "head" else self._fragment()
+            block = child.name in _BLOCK
+            if block:
+                self._break(fragment)
+            self.walk(child, style, fragment)
+            if block:
+                self._break(fragment)
+
+    def walk(self, node: Tag, inherited: _Style, fragment: list[str] | None = None) -> None:
         for child in node.children:
-            if isinstance(child, Comment):
-                self.hidden.extend(("\n", str(child), "\n"))
-            elif isinstance(child, CData | Declaration | Doctype | ProcessingInstruction):
-                continue
-            elif isinstance(child, NavigableString):
-                hidden = (
-                    inherited.display_none
-                    or inherited.visibility is False
-                    or inherited.zero_font is True
-                )
-                (self.hidden if hidden else self.visible).append(str(child))
-            elif isinstance(child, Tag):
-                if child.name in _SKIP:
-                    continue
-                block = child.name in _BLOCK
-                if block:
-                    self._break()
-                self.walk(child, _merge(inherited, self._own_style(child)))
-                if block:
-                    self._break()
+            self.visit(child, inherited, fragment)
+
+    def walk_document(self, soup: BeautifulSoup) -> None:
+        """The whole document: `<body>` as the page; everything outside it is hidden.
+
+        Hiding on `<body>` and its ancestors (`<html>`) covers the whole page, so it
+        is applied up front. Without a `<body>`, the document is read as the page.
+        """
+        root = soup.body
+        if root is None:
+            self.walk(soup, _Style())
+            return
+        ancestors = [p for p in root.parents if not isinstance(p, BeautifulSoup)]
+        inherited = _Style()
+        for el in [*reversed(ancestors), root]:
+            inherited = _merge(inherited, self._own_style(el))
+        path = set(map(id, ancestors))
+
+        def outside(node: Tag) -> None:
+            for child in node.children:
+                if child is root:
+                    self._attributes(root)
+                    self.walk(root, inherited, self._fragment() if _is_hidden(inherited) else None)
+                elif id(child) in path:
+                    assert isinstance(child, Tag)
+                    self._attributes(child)
+                    outside(child)
+                else:
+                    self.visit(child, _HIDE, None)
+
+        outside(soup)
 
 
 def _join(pieces: list[str]) -> str:
@@ -364,23 +592,17 @@ def extract_html(html: str) -> HtmlText:
 
     Hidden: inline `style`, `hidden`, `aria-hidden="true"`, `<noscript>`/`<template>`,
     HTML comments, and simple tag/class/id rules in the page's `<style>` blocks that
-    set `display:none`, `visibility:hidden` or a zero font size. External stylesheets,
-    complex selectors and computed styles are not evaluated.
+    set `display:none`, `visibility:hidden` or a zero font size. Also read as hidden
+    text: `<head>` (title, `<meta content>`, comments, stray text; not scripts or
+    styles), any content outside `<body>`, `<title>` anywhere, and `alt`/`title`
+    attribute values. External stylesheets, complex selectors and computed styles are
+    not evaluated.
     """
     soup = BeautifulSoup(html, "html.parser")
     collector = _Collector(_style_rules(soup))
-    root = soup.body
-    if root is None:
-        collector.walk(soup, _Style())
-    else:
-        # The walk starts below `<body>`, so the hiding of `<body>` and its ancestors
-        # (`<html>`) is applied up front: it covers the whole page.
-        inherited = _Style()
-        ancestors = [p for p in root.parents if not isinstance(p, BeautifulSoup)]
-        for el in [*reversed(ancestors), root]:
-            inherited = _merge(inherited, collector._own_style(el))
-        collector.walk(root, inherited)
-    return HtmlText(_join(collector.visible), _join(collector.hidden))
+    collector.walk_document(soup)
+    fragments = tuple(f for f in map(_join, collector.fragments) if f)
+    return HtmlText(_join(collector.visible), _join(collector.hidden), fragments)
 
 
 @dataclass(frozen=True)
@@ -395,8 +617,10 @@ class RuleScan:
 def scan(content: str, *, html: bool = False) -> RuleScan:
     """Run every rule on `content`; HTML is split into visible and hidden text first.
 
-    Hits in hidden text are named `hidden:<rule>`. Invisible-character checks run on
-    the extracted text (entities decoded).
+    Hits in hidden text are named `hidden:<rule>`. The hidden text is scanned as a
+    whole by the general rules and fragment by fragment by the hidden-only ones, so
+    an AI word in one hidden element and a directive in another do not add up.
+    Invisible-character checks run on the extracted text (entities decoded).
     """
     if not html:
         matched = match_rules(content) + find_invisible_controls(content)
@@ -404,7 +628,9 @@ def scan(content: str, *, html: bool = False) -> RuleScan:
     page = extract_html(content)
     matched = match_rules(page.visible) + find_invisible_controls(page.visible)
     if page.hidden:
-        hidden_hits = match_rules(page.hidden, hidden=True) + find_invisible_controls(page.hidden)
+        hidden_hits = match_rules(page.hidden) + find_invisible_controls(page.hidden)
+        for fragment in page.fragments:
+            hidden_hits += _match_hidden_only(fragment)
         matched += [HIDDEN_PREFIX + name for name in hidden_hits]
     return RuleScan(_dedupe(matched), page.visible, page.hidden)
 
