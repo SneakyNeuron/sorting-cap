@@ -23,7 +23,7 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 
 ## Group 2: Guard rules
 - [x] `app/guard/rules.py`: rule set from R3 as data (name, pattern, languages), with case- and diacritics-insensitive matching over normalized text; HTML hidden-text extraction with `beautifulsoup4` (inline style, `hidden`, `aria-hidden`, and class/id rules from the page's own `<style>` blocks, T6) returned separately from visible text; zero-width and bidi control detection
-- [x] `app/schemas/guard.py`: `Verdict` (clean/flagged, matched rule names, max score, reason) and `QuarantineReport`
+- [x] `app/schemas/guard.py`: `Verdict` (clean/flagged, matched rule names, max score, reason, `quarantine_id` of a flagged input) and `QuarantineReport`
 - [x] Tests: each rule matches its Czech and English samples (with and without diacritics), benign Czech and English job-profile texts and HTML fixtures match nothing, hidden-text extraction on fixtures (inline, attribute and `<style>` class-based hiding), zero-width characters inside a word flagged, ordinary Czech typography (non-breaking spaces, en dashes) not flagged
 
 ## Group 3: Quarantine store and encryption

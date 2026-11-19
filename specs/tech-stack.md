@@ -22,7 +22,7 @@
 | Remote LLM (optional) | Novita, or any OpenAI-compatible endpoint the user configures | Opt-in providers through the OpenAI-compatible LangChain chat model; the user picks the model; never the default. |
 
 ## Architecture
-- One tool registry. Every capability (setup, add-information, add-web-links, scrape-jobs, list-unresolved, list-accepted, list-rejected, approve, reject, set-crontab, …) is a typed tool with Pydantic input and output. It is exposed three ways: as a dash-command in chat, as a tool the chat agent may call, and through a headless runner (`sortingcap run <command>`) used by cron. Interactive tools that need user choices (`setup`) are chat-only and refused by the runner.
+- One tool registry. Every capability (setup, add-information, add-web-links, scrape-jobs, list-unresolved, list-accepted, list-rejected, approve, reject, set-crontab, …) is a typed tool with Pydantic input and output. It is exposed three ways: as a dash-command in chat, as a tool the chat agent may call, and through a headless runner (`sortingcap run <command>`) used by cron. Chat-only tools (`setup`, `show-quarantine`, `release-quarantine`) are refused by the runner.
 - Jobs are headless. Scraping, ingestion and letter generation never depend on the chat session; the chat starts a job and shows its result.
 - The chat agent has access only to registered tools, never to a shell or arbitrary file system paths outside the workspace.
 - Prompts live as files in a single `prompts/` directory tree, organised per language (`cs`, `en`) and per agent; no prompt text inline in code. Output schemas live together in one schemas package.
@@ -31,7 +31,7 @@
 - Default letter skills ship with the app and are copied into the user's workspace, where the user edits them by hand or through the chat.
 
 ## Data
-- A single user workspace directory (default under the user's home, configurable) holds everything the user owns as plain files: profile files, sources, `listing_filter_file.md`, quarantine, company folders with job subfolders (listing summary, original copy, company research, letters), letter skills.
+- A single user workspace directory (default under the user's home, configurable) holds everything the user owns as plain files: profile files, sources, `listing_filter_file.md`, quarantine, the injection classifier in `models/prompt-guard/<revision>/`, the workspace notes `README.md` and `AGENTS.md`, company folders with job subfolders (listing summary, original copy, company research, letters), letter skills.
 - `listing_filter_file.md` is generated only: written from the profile and source texts, overwritten on each regeneration, and changed through `-add-information`, never by hand edits.
 - SQLite (in the workspace) is the index for listings: status (unresolved / accepted / rejected), dedupe keys and timestamps. Files stay the source of truth for content; the index can be rebuilt from them.
 - Dedupe key: normalised position title + company name + listing date.
@@ -68,5 +68,5 @@
 - Linux first (bash, crontab); macOS best effort.
 
 ## Project structure
-- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas; later graphs, scraping, guard, storage), `prompts/` (per language and agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
+- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas, the injection guard in `guard/`, the profile intake with its LangGraph graph in `intake/`; later scraping, storage), `prompts/` (per language and agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
 - No web server or web UI (FastAPI, uvicorn and htmx are out of scope); `specs/` is the design record.

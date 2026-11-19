@@ -17,7 +17,7 @@ Goal: a user can install the app with uv, run a guided `-setup` that gets a loca
 Spec: specs/features/02-profile-intake/
 Goal: the user tells the cap about themselves by chat and sources, and gets reviewed profile files plus a `listing_filter_file.md`.
 - [ ] Prompt-injection guard: local classifier + rules, quarantine directory, report to user; used by every later phase for web input
-- [ ] `-add-information`: chat dialog and sources (.txt, .pdf, .html, URL) ingested via LlamaIndex, web sources through the guard
+- [ ] `-add-information`: chat dialog and sources (.txt, .md, .pdf, .html, URL); PDFs read via LlamaIndex, HTML via beautifulsoup4; web sources through the guard
 - [ ] Must-know checklist (target roles, past experience, …) and nice-to-have checklist (CV, salary range, contract type HPP/IČO/…, locations, work mode); the cap asks for missing items
 - [ ] High-quality profile files in the workspace; manual files dropped into the workspace are picked up
 - [ ] User can say "next" anytime; the cap tells where every profile file is stored
