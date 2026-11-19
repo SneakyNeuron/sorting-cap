@@ -15,6 +15,7 @@ from app.guard.quarantine import QUARANTINE_DIR
 from app.intake.filter_file import filter_path
 from app.intake.profile import load_profile, profile_path, save_profile
 from app.intake.sources import load_manifest, manifest_path, sources_dir
+from app.intake.status import checklist_path
 from app.schemas.filter import FilterFile
 from app.schemas.intake import AddInformationInput, ExtractedValue, Extraction
 from app.schemas.profile import ItemSection, ProfileDoc
@@ -421,3 +422,71 @@ def test_filter_interrupted_round_is_reported_and_incomplete(en, monkeypatch):
     assert EN.message("intake.note.filter_interrupted")[:30] in text
     assert EN.message("add_information.cancelled")[:20] not in text
     assert EN.message("add_information.summary.filter_kept")[:20] not in text
+
+
+# --- checklist status (Phase 3 R12, R13) -------------------------------------------------
+
+
+def test_headless_round_writes_checklist_with_web_origin_and_gap(en, classifier):
+    model = structured_model(
+        Extraction(
+            salary=ExtractedValue(text="80k", gap="no currency"),
+            skills=ExtractedValue(text="Python"),
+        ),
+        FILTER,
+    )
+    code, out, err = headless(
+        ["add-information", "--source", "https://me.example/cv", "--json"], model
+    )
+    assert code == EXIT_OK, err
+    slug = load_manifest(en).sources[0].slug
+    items = json.loads(checklist_path(en).read_text(encoding="utf-8"))["items"]
+    assert items["salary"]["state"] == "partial" and items["salary"]["note"] == "no currency"
+    assert items["salary"]["origins"] == [f"web:{slug}"]
+    assert items["skills"]["state"] == "known" and items["skills"]["origins"] == [f"web:{slug}"]
+    data = json.loads(out)
+    assert data["partial"] == [{"item_id": "salary", "note": "no currency"}]
+    assert data["checklist_path"] == str(checklist_path(en))
+    assert data["status_written"] is True
+
+
+def test_chat_source_round_writes_checklist(en, cwd):
+    (cwd / "a.txt").write_text("Backend roles.", encoding="utf-8")
+    model = structured_model(roles("Backend developer"), FILTER)
+    ctx, _ = make_ctx(en, NoPrompts(), model_factory=lambda _s, _c: model)
+    handle(ctx, AddInformationInput(source=[str(cwd / "a.txt")]))
+    slug = load_manifest(en).sources[0].slug
+    items = json.loads(checklist_path(en).read_text(encoding="utf-8"))["items"]
+    assert items["target_roles"]["origins"] == [f"file:{slug}"]
+
+
+@pytest.mark.parametrize(
+    ("language", "header"),
+    [("en", "Partly known"), ("cs", "Zčásti známo")],
+)
+def test_summary_shows_partial_items_and_the_checklist_path(workspace, cwd, language, header):
+    save_settings(workspace, Settings(language=language, provider="ollama", model="m"))
+    (cwd / "a.txt").write_text("Salary 80k.", encoding="utf-8")
+    reply = Extraction(salary=ExtractedValue(text="80k", gap="no currency"))
+    ctx, buf = make_ctx(workspace, model_factory=lambda _s, _c: structured_model(reply, FILTER))
+    out = handle(ctx, AddInformationInput(source=[str(cwd / "a.txt")]))
+    out.render(ctx)
+    texts = Texts(language)
+    text = buf.getvalue()
+    assert header in text
+    assert f"- {texts.message('profile.item.salary.title')}: no currency" in text
+    assert f"{texts.message('add_information.file.checklist')}: {checklist_path(workspace)}" in (
+        " ".join(text.split())
+    )
+
+
+def test_chat_cancel_leaves_checklist_unchanged(en, cwd):
+    save_profile(
+        en, ProfileDoc(items={"skills": ItemSection(title="", body="Python")}), EN, Manifest()
+    )
+    checklist_path(en).write_text("{hand-broken", encoding="utf-8")
+    (cwd / "a.txt").write_text("Backend roles.", encoding="utf-8")
+    prompter = ScriptedPrompter(str(cwd / "a.txt"), "", KeyboardInterrupt())
+    ctx, _ = make_ctx(en, prompter, model_factory=lambda _s, _c: structured_model(roles("x")))
+    assert handle(ctx, AddInformationInput()).cancelled
+    assert checklist_path(en).read_text(encoding="utf-8") == "{hand-broken"

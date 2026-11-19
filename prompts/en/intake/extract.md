@@ -16,6 +16,8 @@ For an item whose `current` text is not empty, also set `relation`:
 
 Leave `relation` null for items whose `current` text is empty.
 
+For each value you return, also set `gap`: a short note on what is still missing for that item after this text (for example "no currency" for a salary without one, "no levels" for languages without levels). Leave `gap` null when the value looks complete. Write `gap` in the language of the text.
+
 Set `is_cv` to true only when `is_source` is true and the text is a CV or résumé.
 
 Write the values in the language of the text.

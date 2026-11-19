@@ -16,6 +16,8 @@ U položky, jejíž `current` text není prázdný, nastav také `relation`:
 
 U položek s prázdným `current` textem nech `relation` null.
 
+U každé hodnoty, kterou vrátíš, nastav také `gap`: krátkou poznámku, co u té položky po tomto textu ještě chybí (například „chybí měna“ u platu bez měny, „chybí úrovně“ u jazyků bez úrovně). Když hodnota vypadá úplná, nech `gap` null. `gap` piš v jazyce textu.
+
 `is_cv` nastav na true jen tehdy, když je `is_source` true a text je životopis.
 
 Hodnoty piš v jazyce textu.

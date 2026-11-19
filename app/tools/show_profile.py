@@ -1,8 +1,9 @@
 """`/show-profile` (agent-callable, headless allowed): the profile, sources and filter file (R17).
 
-It reads only `profile/profile.md`, `profile/sources/manifest.json` and
-`listing_filter_file.md` (shown without its internal `profile-sha256` marker); never a
-source's `text.md` or anything in `quarantine/`.
+It reads only `profile/profile.md`, `profile/checklist.json` (reconciled, never
+written, Phase 3 R14), `profile/sources/manifest.json` and `listing_filter_file.md`
+(shown without its internal `profile-sha256` marker); never a source's `text.md` or
+anything in `quarantine/`.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from app.intake.profile import (
     profile_path,
 )
 from app.intake.sources import SourcesError, load_manifest, manifest_path, sources_dir
+from app.intake.status import checklist_path, read_status
 from app.messages import short_error
 from app.schemas.profile import ProfileItemView, ShowProfileInput, ShowProfileOutput, SourceView
 from app.schemas.sources import Manifest
@@ -44,8 +46,15 @@ def handle(ctx: ToolContext, inputs: ShowProfileInput) -> ShowProfileOutput:
         manifest = load_manifest(ctx.workspace)
     except SourcesError as exc:
         manifest, manifest_error = Manifest(), exc.text(ctx.texts)
+    status, invalid = read_status(ctx.workspace, doc, manifest)
+    status_note = (
+        ctx.msg("intake.note.status_rebuilt", path=str(checklist_path(ctx.workspace)))
+        if invalid
+        else None
+    )
     views = []
     for item in ITEMS:
+        item_status = status.items[item.id]
         views.append(
             ProfileItemView(
                 id=item.id,
@@ -53,6 +62,9 @@ def handle(ctx: ToolContext, inputs: ShowProfileInput) -> ShowProfileOutput:
                 title=item_title(doc, item.id, ctx.texts),
                 text=item_body(doc, item.id, manifest),
                 missing=not is_filled(doc, item.id, manifest),
+                state=item_status.state,
+                note=item_status.note,
+                origins=item_status.origins,
             )
         )
     root = sources_dir(ctx.workspace)
@@ -65,7 +77,9 @@ def handle(ctx: ToolContext, inputs: ShowProfileInput) -> ShowProfileOutput:
         sources=sources,
         filter_text=_read_filter(ctx),
         manifest_error=manifest_error,
+        status_note=status_note,
         profile_path=str(profile_path(ctx.workspace)),
+        checklist_path=str(checklist_path(ctx.workspace)),
         sources_dir=str(root),
         manifest_path=str(manifest_path(ctx.workspace)),
         filter_path=str(filter_path(ctx.workspace)),

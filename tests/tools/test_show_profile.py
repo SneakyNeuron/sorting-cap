@@ -225,3 +225,111 @@ def test_works_with_source_texts_and_quarantine_unreadable(workspace, monkeypatc
             p.chmod(0o600)
     assert len(result.sources) == 2 and result.filter_text == FILTER
     assert "Backend developer" in buf.getvalue()
+
+
+# --- checklist status (Phase 3 R14) --------------------------------------------------
+
+
+def put_status(workspace: Path, content: str) -> Path:
+    from app.intake.status import checklist_path
+
+    path = checklist_path(workspace)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+STATUS = json.dumps(
+    {
+        "version": 1,
+        "items": {
+            "target_roles": {
+                "state": "known",
+                "note": None,
+                "origins": ["file:cv-pdf", "conversation"],
+                "updated_at": "2026-11-18T10:00:00Z",
+            },
+            "skills": {
+                "state": "partial",
+                "note": "no levels",
+                "origins": ["web:example-com"],
+                "updated_at": "2026-11-18T10:00:00Z",
+            },
+            "experience": {
+                "state": "known",  # its section is empty: reconciled to missing
+                "note": None,
+                "origins": ["conversation"],
+                "updated_at": "2026-11-18T10:00:00Z",
+            },
+        },
+    }
+)
+
+
+@pytest.mark.parametrize(
+    ("lang", "words"),
+    [
+        ("cs", ["zčásti známo: no levels", "odkud: file:cv-pdf, rozhovor", "stav checklistu"]),
+        ("en", ["partly known: no levels", "from: file:cv-pdf, conversation", "checklist status"]),
+    ],
+)
+def test_states_notes_and_origins_shown(workspace, lang, words):
+    setup_profile(workspace, lang)
+    path = put_status(workspace, STATUS)
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, ShowProfileInput())
+    by_id = {v.id: v for v in out.items}
+    assert (by_id["target_roles"].state, by_id["target_roles"].origins) == (
+        "known",
+        ["file:cv-pdf", "conversation"],
+    )
+    assert (by_id["skills"].state, by_id["skills"].note) == ("partial", "no levels")
+    assert by_id["experience"].state == "missing" and by_id["experience"].missing
+    # the CV is flagged in the manifest but had no stored status: a hand edit
+    assert by_id["cv"].state == "known" and by_id["cv"].origins == ["hand_edit"]
+    assert out.checklist_path == str(path) and out.status_note is None
+    out.render(ctx)
+    text = buf.getvalue()
+    for word in words:
+        assert word in text, word
+    assert str(path) in text
+    assert path.read_text(encoding="utf-8") == STATUS  # never written
+
+
+def test_missing_status_is_built_silently_and_not_written(workspace):
+    from app.intake.status import checklist_path
+
+    setup_profile(workspace, "en")
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, ShowProfileInput())
+    by_id = {v.id: v for v in out.items}
+    assert by_id["skills"].origins == ["profile"] and out.status_note is None
+    out.render(ctx)
+    assert "from: profile" in buf.getvalue()
+    assert not checklist_path(workspace).exists()
+
+
+def test_corrupt_status_shown_rebuilt_with_a_note(workspace):
+    setup_profile(workspace, "en")
+    path = put_status(workspace, "{nope")
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, ShowProfileInput())
+    assert out.status_note and str(path) in out.status_note
+    assert {v.id: v for v in out.items}["skills"].origins == ["profile"]
+    out.render(ctx)
+    assert "could not be read" in " ".join(buf.getvalue().split())
+    assert path.read_text(encoding="utf-8") == "{nope"
+
+
+def test_headless_json_has_states(workspace):
+    setup_profile(workspace, "en")
+    put_status(workspace, STATUS)
+    out, err = io.StringIO(), io.StringIO()
+    assert run_headless(["show-profile", "--json"], stdout=out, stderr=err) == EXIT_OK
+    data = json.loads(out.getvalue())
+    skills = {i["id"]: i for i in data["items"]}["skills"]
+    assert (skills["state"], skills["note"], skills["origins"]) == (
+        "partial",
+        "no levels",
+        ["web:example-com"],
+    )
+    assert data["checklist_path"].endswith("profile/checklist.json")

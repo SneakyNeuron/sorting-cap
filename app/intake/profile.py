@@ -224,18 +224,21 @@ def merge(
     """
     new = doc.model_copy(deep=True)
     conflicts: list[Conflict] = []
-    for update in updates:
+    applied: list[int] = []
+    for index, update in enumerate(updates):
         text = safe_body(update.text.strip())
         if not text or update.item_id == CV_ITEM:
             continue
         current = new.body(update.item_id).strip()
         if not current:
             _set(new, update.item_id, text, texts)
+            applied.append(index)
         elif _norm(text) == _norm(current) or update.relation == "match":
             continue
         elif update.relation == "adds":
             if _norm(text) not in _norm(current):
                 _set(new, update.item_id, f"{current}\n\n{text}", texts)
+                applied.append(index)
         else:  # "contradicts", or no relation for a filled item: never overwritten
             conflicts.append(
                 Conflict(
@@ -252,5 +255,6 @@ def merge(
     changed = [i.id for i in ITEMS if new.body(i.id).strip() != doc.body(i.id).strip()]
     return new, MergeResult(
         changed=changed,
+        applied=applied,
         conflicts=[c for c in conflicts if c.item_id not in answered],
     )

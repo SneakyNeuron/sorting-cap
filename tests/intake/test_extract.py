@@ -87,3 +87,21 @@ def test_to_updates_skips_empty_and_answered_items():
     )
     updates = to_updates(extraction, "cv.pdf", skip="languages")
     assert [(u.item_id, u.text, u.origin) for u in updates] == [("skills", "Go", "cv.pdf")]
+
+
+def test_to_updates_carries_the_gap_and_the_source_origin():
+    extraction = Extraction(
+        salary=ExtractedValue(text="80k", gap=" no currency "),
+        skills=ExtractedValue(text="Go", gap="  "),
+    )
+    updates = to_updates(extraction, "cv.pdf", source="file:cv-pdf")
+    assert [(u.item_id, u.gap, u.source) for u in updates] == [
+        ("skills", None, "file:cv-pdf"),
+        ("salary", "no currency", "file:cv-pdf"),
+    ]
+    assert all(u.source is None for u in to_updates(extraction, "intro"))
+
+
+def test_extraction_prompt_explains_gap():
+    for lang in ("cs", "en"):
+        assert "`gap`" in Texts(lang).prompt("intake", "extract")

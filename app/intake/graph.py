@@ -14,7 +14,9 @@ question, `done` ends the round at once (localized words, R9).
 Nothing is written to `profile.md` before `write`: a cancelled round (Ctrl-C / Ctrl-D)
 leaves it as it was, and sources copied so far stay with `extracted` false, so the next
 round extracts them. `write` merges (answers replace, sources and the introduction fill,
-R13), saves `profile.md` and only then marks the extracted sources. `filter`
+R13), saves `profile.md`, then `profile/checklist.json` whenever the reconciled
+status differs from the stored file (Phase 3 R12, `app/intake/status.py`), and only
+then marks the extracted sources. `filter`
 regenerates `listing_filter_file.md` when the profile changed or the file is missing
 (R14, T9); on a model error, or a Ctrl-C during that call, the previous file is kept
 and the summary notes it.
@@ -48,6 +50,18 @@ from app.intake.sources import (
     source_text,
     unextracted,
 )
+from app.intake.status import (
+    apply_changes,
+    checklist_path,
+    holes,
+    load_status,
+    now_utc,
+    reconcile,
+    round_changes,
+    save_status,
+    source_origin,
+)
+from app.schemas.checklist import ChecklistStatus
 from app.schemas.intake import NoteKind, RoundNote, RoundResult, RoundState
 from app.schemas.profile import ItemUpdate, ProfileDoc
 from app.schemas.sources import Manifest, ManifestEntry, SourceResult
@@ -171,7 +185,7 @@ def build_graph(
                 ),
             )
             return
-        r.add_updates(to_updates(outcome.extraction, entry.origin))
+        r.add_updates(to_updates(outcome.extraction, entry.origin, source=source_origin(entry)))
         r.extracted.append(entry.slug)
         if outcome.extraction.is_cv and entry.slug not in r.cv_slugs:
             r.cv_slugs.append(entry.slug)
@@ -181,8 +195,16 @@ def build_graph(
     def start(state: RoundState) -> dict[str, Any]:
         r = _Round(state)
         r.add_sources(scan_dropped(ctx, scorer=scorer))
+        base = load_profile(ctx.workspace)
+        loaded = load_status(ctx.workspace)
+        if loaded.invalid:
+            path = str(checklist_path(ctx.workspace))
+            r.note("status_rebuilt", path, ctx.msg("intake.note.status_rebuilt", path=path))
+        status = reconcile(base, load_manifest(ctx.workspace), loaded.stored, now=now_utc())
         return r.changes(
-            base=load_profile(ctx.workspace).model_dump(mode="json"),
+            base=base.model_dump(mode="json"),
+            status=status.model_dump(mode="json"),
+            status_stored=loaded.stored.model_dump(mode="json") if loaded.stored else None,
             profile_existed=profile_path(ctx.workspace).exists(),
             specs=list(state.get("specs", [])),
             asked=[],
@@ -284,10 +306,20 @@ def build_graph(
     def write(state: RoundState) -> dict[str, Any]:
         r = _Round(state)
         base = r.base()
-        new_doc, merged = merge(base, answers=r.answers, updates=r.item_updates(), texts=texts)
+        updates = r.item_updates()
+        new_doc, merged = merge(base, answers=r.answers, updates=updates, texts=texts)
         for slug in r.cv_slugs:
             set_cv(ctx.workspace, slug)
         manifest = load_manifest(ctx.workspace)
+        round_slugs = {s.get("slug") for s in r.sources if s.get("status") == "added"}
+        cv_entries = [
+            e for e in manifest.sources if e.cv and (e.slug in r.cv_slugs or e.slug in round_slugs)
+        ]
+        now = now_utc()
+        started = ChecklistStatus.model_validate(state.get("status", {}))
+        learned = round_changes(updates, merged.applied, r.answers, cv_entries)
+        status = reconcile(new_doc, manifest, apply_changes(started, learned, now=now), now=now)
+        status_written = status.model_dump(mode="json") != state.get("status_stored")
         cv_changed = cv_body(manifest).strip() != base.body(CV_ITEM).strip()
         changed = list(merged.changed)
         if cv_changed:
@@ -295,15 +327,20 @@ def build_graph(
         written = bool(changed or r.extracted or not state.get("profile_existed", False))
         if written:
             save_profile(ctx.workspace, new_doc, texts, manifest)
+        if status_written:  # after `profile.md`, also when only the status changed (R12)
+            save_status(ctx.workspace, status)
+        if written:
             mark_extracted(ctx.workspace, r.extracted)
         result = RoundResult(
             sources=[SourceResult.model_validate(s) for s in r.sources],
             changed=changed,
             missing=missing_items(new_doc, manifest),
+            partial=holes(status),
             conflicts=merged.conflicts,
             notes=[RoundNote.model_validate(n) for n in r.notes],
             extracted=r.extracted if written else [],
             profile_written=written,
+            status_written=status_written,
             profile_changed=bool(changed),
         )
         return {"result": result.model_dump(mode="json")}

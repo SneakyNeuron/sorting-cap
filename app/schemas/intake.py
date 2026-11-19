@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.messages import say
 from app.schemas.base import ToolInput, ToolOutput
+from app.schemas.checklist import ItemHole
 from app.schemas.profile import Conflict, ItemId, ProfilePaths, Relation
 from app.schemas.sources import SourceResult
 
@@ -22,7 +23,8 @@ class ExtractedValue(BaseModel):
     """What the text says about one checklist item.
 
     `relation` is set only when the item is already filled: `match` (nothing new),
-    `adds` (new details, appended) or `contradicts` (a conflict for the user).
+    `adds` (new details, appended) or `contradicts` (a conflict for the user). `gap`
+    is the hole note: what the item still lacks after this text (Phase 3 T8).
     """
 
     text: str = Field(
@@ -40,6 +42,14 @@ class ExtractedValue(BaseModel):
             "'adds': the text gives new details that fit with the current value and "
             "can be appended to it; 'contradicts': the text disagrees with the current "
             "value (a conflict the user resolves)."
+        ),
+    )
+    gap: str | None = Field(
+        default=None,
+        description=(
+            "What is still missing for this item after this text, as a short note in the "
+            "text's language (for example 'no currency' for a salary without one, or "
+            "'no levels' for languages without levels). Null when the value looks complete."
         ),
     )
 
@@ -137,7 +147,9 @@ class RoundState(TypedDict, total=False):
     their items. `collecting` is true while sources are being asked for, `current` is
     the item of the last question asked. `extracted` are the slugs extracted this round
     (marked in the manifest after `profile.md` is written), `cv_slugs` the ones the
-    extraction called a CV.
+    extraction called a CV. `status` is the checklist status reconciled at the start
+    (`ChecklistStatus`), `status_stored` the stored file as read (`None` when missing
+    or invalid), so `write` saves the status only when it differs (Phase 3 R12).
     """
 
     headless: bool
@@ -153,6 +165,8 @@ class RoundState(TypedDict, total=False):
     extracted: list[str]
     cv_slugs: list[str]
     notes: list[dict[str, Any]]
+    status: dict[str, Any]
+    status_stored: dict[str, Any] | None
     done: bool
     result: dict[str, Any] | None
 
@@ -168,6 +182,7 @@ NoteKind = Literal[
     "model_error_filter",
     "filter_interrupted",
     "filter_text_missing",
+    "status_rebuilt",
 ]
 
 
@@ -192,6 +207,8 @@ class RoundResult(BaseModel):
     only `sources` (already copied) is meaningful. `profile_changed`: an item or the CV
     section changed. `extracted`: slugs marked `extracted` in the manifest.
     `filter_written`: `listing_filter_file.md` was regenerated this round (R14).
+    `partial`: items left partial, with their hole notes; `status_written`:
+    `checklist.json` was written (Phase 3 R12).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -200,10 +217,12 @@ class RoundResult(BaseModel):
     sources: list[SourceResult] = Field(default_factory=list)
     changed: list[ItemId] = Field(default_factory=list)
     missing: list[ItemId] = Field(default_factory=list)
+    partial: list[ItemHole] = Field(default_factory=list)
     conflicts: list[Conflict] = Field(default_factory=list)
     notes: list[RoundNote] = Field(default_factory=list)
     extracted: list[str] = Field(default_factory=list)
     profile_written: bool = False
+    status_written: bool = False
     profile_changed: bool = False
     filter_written: bool = False
 
@@ -228,9 +247,11 @@ class AddInformationOutput(ToolOutput, ProfilePaths):
     sources: list[SourceResult] = Field(default_factory=list)
     changed: list[ItemId] = Field(default_factory=list)
     missing: list[ItemId] = Field(default_factory=list)
+    partial: list[ItemHole] = Field(default_factory=list)
     conflicts: list[Conflict] = Field(default_factory=list)
     notes: list[RoundNote] = Field(default_factory=list)
     profile_written: bool = False
+    status_written: bool = False
     filter_written: bool = False
     source_dirs: list[str] = Field(default_factory=list)
 
@@ -263,6 +284,12 @@ class AddInformationOutput(ToolOutput, ProfilePaths):
                 )
             else:
                 say(ctx.console, ctx.msg("add_information.summary.complete"))
+            if self.partial:
+                say(ctx.console, ctx.msg("add_information.summary.partial"))
+                for hole in self.partial:
+                    title = item(hole.item_id).title(ctx.texts)
+                    gap = " ".join((hole.note or "").split())
+                    say(ctx.console, f"- {title}: {gap}" if gap else f"- {title}")
             if self.conflicts:
                 say(ctx.console, ctx.msg("add_information.summary.conflicts"), "yellow")
                 for c in self.conflicts:
@@ -301,6 +328,10 @@ class AddInformationOutput(ToolOutput, ProfilePaths):
         say(ctx.console, "")
         say(ctx.console, ctx.msg("add_information.summary.files"), "bold")
         say(ctx.console, f"- {ctx.msg('add_information.file.profile')}: {self.profile_path}")
+        say(
+            ctx.console,
+            f"- {ctx.msg('add_information.file.checklist')}: {self.checklist_path}",
+        )
         for path in self.source_dirs:
             say(ctx.console, f"- {ctx.msg('add_information.file.source')}: {path}")
         say(ctx.console, f"- {ctx.msg('add_information.file.manifest')}: {self.manifest_path}")

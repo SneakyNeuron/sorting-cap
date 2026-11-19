@@ -20,6 +20,7 @@ from app.intake.filter_file import filter_path
 from app.intake.graph import run_round
 from app.intake.profile import profile_path
 from app.intake.sources import SourcesError, load_manifest, manifest_path, sources_dir
+from app.intake.status import checklist_path
 from app.messages import short_error
 from app.schemas.intake import (
     FILTER_NOT_WRITTEN,
@@ -78,11 +79,14 @@ def summary(
         sources=[s for s in result.sources if in_summary(s)],
         changed=result.changed,
         missing=result.missing,
+        partial=result.partial,
         conflicts=result.conflicts,
         notes=result.notes,
         profile_written=result.profile_written,
+        status_written=result.status_written,
         filter_written=result.filter_written,
         profile_path=str(profile_path(ctx.workspace)),
+        checklist_path=str(checklist_path(ctx.workspace)),
         sources_dir=str(sources_dir(ctx.workspace)),
         source_dirs=_source_dirs(ctx),
         manifest_path=str(manifest_path(ctx.workspace)),

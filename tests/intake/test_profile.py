@@ -409,3 +409,17 @@ def test_hand_written_bodies_parsed_as_before():
     doc = parse(text)
     assert doc.body("skills") == "# not a section\n<!-- item:salary -->"
     assert parse(render(doc, Texts("en"), Manifest())).body("skills") == doc.body("skills")
+
+
+def test_merge_reports_which_updates_were_applied():
+    updates = [
+        ItemUpdate(item_id="experience", text="5 years at Acme"),  # fills an empty item
+        ItemUpdate(item_id="target_roles", text="Also data engineer", relation="adds"),
+        ItemUpdate(item_id="salary", text="around 90k", relation="match"),
+        ItemUpdate(item_id="skills", text="Only Java", relation="contradicts"),
+        ItemUpdate(item_id="experience", text="Another", relation=None),  # now a conflict
+    ]
+    doc = full_doc()
+    doc.items.pop("experience", None)
+    _, result = merge(doc, updates=updates)
+    assert result.applied == [0, 1]

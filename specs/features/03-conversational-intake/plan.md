@@ -35,11 +35,11 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] Tests: suite still passes; `uv run mypy app` clean; a test in `tests/test_project.py` asserts mypy is in the dev group and `[tool.mypy]` has the pydantic plugin
 
 ## Group 3: Checklist status store
-- [ ] `ChecklistStatus` / `ItemStatus` schemas in `app/schemas/` (T2); `ExtractedValue.gap` with a description (T8), extraction prompt cs/en updated to explain `gap` (the `question` input stays until Group 6, because the Phase 2 `ask` node still passes it)
-- [ ] `app/intake/status.py`: load (missing → built silently with origin `profile`; invalid → rebuilt with a note), pure `reconcile(doc, manifest, stored)` (R4), apply source outcomes (origins `file:`/`web:`, `partial` from `gap`), save after `profile.md` in `write` whenever the status differs from the stored file (R12)
-- [ ] Headless and `--source` rounds update `checklist.json` (R13)
-- [ ] `/show-profile` shows state, hole note and origins and lists `checklist.json` (R14); `/add-information` summary shows partial items with notes and the `checklist.json` path (R12)
-- [ ] Tests: reconciliation table (empty → missing, hand-filled → known/`hand_edit`, partial kept, CV via manifest), missing file built silently with origin `profile`, corrupt file rebuilt with note, status-only change persisted without rewriting `profile.md`, origins deduplicated, 0600 atomic write, headless round writes status with reader `gap` → `partial`, `/show-profile` cs/en output, cancel leaves `checklist.json` unchanged
+- [x] `ChecklistStatus` / `ItemStatus` schemas in `app/schemas/` (T2); `ExtractedValue.gap` with a description (T8), extraction prompt cs/en updated to explain `gap` (the `question` input stays until Group 6, because the Phase 2 `ask` node still passes it)
+- [x] `app/intake/status.py`: load (missing → built silently with origin `profile`; invalid → rebuilt with a note), pure `reconcile(doc, manifest, stored)` (R4), apply source outcomes (origins `file:`/`web:`, `partial` from `gap`), save after `profile.md` in `write` whenever the status differs from the stored file (R12)
+- [x] Headless and `--source` rounds update `checklist.json` (R13)
+- [x] `/show-profile` shows state, hole note and origins and lists `checklist.json` (R14); `/add-information` summary shows partial items with notes and the `checklist.json` path (R12)
+- [x] Tests: reconciliation table (empty → missing, hand-filled → known/`hand_edit`, partial kept, CV via manifest), missing file built silently with origin `profile`, corrupt file rebuilt with note, status-only change persisted without rewriting `profile.md`, origins deduplicated, 0600 atomic write, headless round writes status with reader `gap` → `partial`, `/show-profile` cs/en output, cancel leaves `checklist.json` unchanged
 
 ## Group 4: Source detection, file search and the ingest allow rule (untrusted text)
 - [ ] `app/intake/detect.py`: `detect(message, cwd)` (T6) for URLs, `www.` hosts and supported-extension paths, quoted paths with spaces, bare relative words only when the file exists, trailing punctuation stripped, cap of 10 per message

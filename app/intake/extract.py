@@ -75,10 +75,27 @@ def extract(
     return ExtractOutcome(extraction=result, truncated=truncated)
 
 
-def to_updates(extraction: Extraction, origin: str, *, skip: str | None = None) -> list[ItemUpdate]:
-    """Fill-only updates for every extracted item except `skip` (the answered one)."""
+def to_updates(
+    extraction: Extraction,
+    origin: str,
+    *,
+    skip: str | None = None,
+    source: str | None = None,
+) -> list[ItemUpdate]:
+    """Fill-only updates for every extracted item except `skip` (the answered one).
+
+    `source` is the checklist origin of the source (`file:<slug>` / `web:<slug>`),
+    `None` for text from the conversation; each update carries the reader's `gap`.
+    """
     return [
-        ItemUpdate(item_id=name, text=value.text.strip(), relation=value.relation, origin=origin)
+        ItemUpdate(
+            item_id=name,
+            text=value.text.strip(),
+            relation=value.relation,
+            origin=origin,
+            gap=(value.gap or "").strip() or None,
+            source=source,
+        )
         for name, value in extraction.values()
         if name != skip
     ]

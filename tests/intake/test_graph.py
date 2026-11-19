@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from helpers import ScriptedPrompter, make_ctx, structured_model
 
@@ -10,6 +12,7 @@ from app.intake.extract import CHAR_BUDGET
 from app.intake.graph import run_round
 from app.intake.profile import load_profile, profile_path, save_profile
 from app.intake.sources import load_manifest, sources_dir
+from app.intake.status import checklist_path
 from app.schemas.intake import ExtractedValue, Extraction
 from app.schemas.profile import ItemSection, ProfileDoc
 from app.schemas.sources import Manifest
@@ -333,3 +336,133 @@ def test_ctrl_c_during_filter_reports_the_written_round(en, monkeypatch):
     assert [n.kind for n in result.notes] == ["filter_interrupted"]
     assert result.notes[0].text == EN.message("intake.note.filter_interrupted")
     assert load_profile(en).body("target_roles") == "Backend"
+
+
+# --- checklist status (Phase 3 R3, R4, R9, R12, R13) ---------------------------------
+
+
+def status_file(workspace) -> dict:
+    return json.loads(checklist_path(workspace).read_text(encoding="utf-8"))["items"]
+
+
+def test_headless_round_writes_status_with_source_origins_and_gap(en, cwd):
+    (cwd / "notes.md").write_text("Salary 80k. Python.", encoding="utf-8")
+    model = structured_model(
+        Extraction(
+            salary=ExtractedValue(text="80k", gap="no currency"),
+            skills=value("Python"),
+            is_cv=True,
+        )
+    )
+    ctx, _, _ = ctx_for(en, model)
+    result = run_round(ctx, sources=[str(cwd / "notes.md")], headless=True, cwd=cwd)
+    slug = load_manifest(en).sources[0].slug
+    items = status_file(en)
+    assert items["salary"]["state"] == "partial" and items["salary"]["note"] == "no currency"
+    assert items["salary"]["origins"] == [f"file:{slug}"]
+    assert items["skills"] == {**items["skills"], "state": "known", "note": None}
+    assert items["skills"]["origins"] == [f"file:{slug}"]
+    assert items["cv"]["state"] == "known" and items["cv"]["origins"] == [f"file:{slug}"]
+    assert items["experience"]["state"] == "missing"
+    assert result.status_written
+    assert [(h.item_id, h.note) for h in result.partial] == [("salary", "no currency")]
+
+
+def test_upgrade_builds_status_silently_without_rewriting_profile(en):
+    put_profile(en, skills="Python")
+    path = profile_path(en)
+    before = path.read_bytes()
+    ctx, _, _ = ctx_for(en, structured_model(), "", "", "done")
+    result = run_round(ctx)
+    assert not result.profile_written and path.read_bytes() == before
+    assert result.status_written and result.notes == []
+    items = status_file(en)
+    assert items["skills"]["state"] == "known" and items["skills"]["origins"] == ["profile"]
+    assert items["target_roles"]["state"] == "missing"
+
+
+def test_status_only_change_is_persisted_without_rewriting_profile(en):
+    put_profile(en, skills="Python", education="MSc")
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    assert status_file(en)["education"]["state"] == "known"
+    put_profile(en, skills="Python")  # the user empties a section by hand
+    path = profile_path(en)
+    before = path.read_bytes()
+    result = run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    assert not result.profile_written and path.read_bytes() == before
+    assert result.status_written
+    assert status_file(en)["education"] == {
+        **status_file(en)["education"],
+        "state": "missing",
+        "origins": [],
+    }
+
+
+def test_matching_status_is_not_rewritten(en):
+    put_profile(en, skills="Python")
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    before = checklist_path(en).read_bytes()
+    result = run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    assert not result.status_written and checklist_path(en).read_bytes() == before
+
+
+def test_corrupt_status_is_rebuilt_with_a_note(en):
+    put_profile(en, skills="Python")
+    checklist_path(en).write_text("{broken", encoding="utf-8")
+    ctx, _, _ = ctx_for(en, structured_model(), "", "", "done")
+    result = run_round(ctx)
+    assert [n.kind for n in result.notes] == ["status_rebuilt"]
+    assert str(checklist_path(en)) in result.notes[0].text
+    assert result.status_written
+    assert status_file(en)["skills"]["origins"] == ["profile"]
+
+
+def test_hand_edit_and_answer_origins(en):
+    put_profile(en, skills="Python")
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    put_profile(en, skills="Python", education="MSc")  # filled by hand after the round
+    model = structured_model(Extraction(target_roles=value("Backend developer")))
+    ctx, _, _ = ctx_for(en, model, "", "", "Backend developer", "done")
+    run_round(ctx)
+    items = status_file(en)
+    assert items["education"]["state"] == "known"
+    assert items["education"]["origins"] == ["hand_edit"]
+    assert items["target_roles"]["state"] == "known"
+    assert items["target_roles"]["origins"] == ["conversation"]
+
+
+def test_stored_partial_with_a_filled_section_is_kept(en):
+    put_profile(en, skills="Python")
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    data = json.loads(checklist_path(en).read_text(encoding="utf-8"))
+    data["items"]["salary"] = {
+        "state": "partial",
+        "note": "no currency",
+        "origins": ["file:cv"],
+        "updated_at": "2026-11-01T00:00:00Z",
+    }
+    checklist_path(en).write_text(json.dumps(data), encoding="utf-8")
+    put_profile(en, skills="Python", salary="80k")
+    # salary is filled, so it is not asked: the stored partial is kept as is
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    assert status_file(en)["salary"]["state"] == "partial"
+    assert status_file(en)["salary"]["note"] == "no currency"
+
+
+@pytest.mark.parametrize("stop", [KeyboardInterrupt(), EOFError()])
+def test_cancelled_round_leaves_status_unchanged(en, cwd, stop):
+    put_profile(en, skills="Python")
+    run_round(ctx_for(en, structured_model(), "", "", "done")[0])
+    before = checklist_path(en).read_bytes()
+    (cwd / "notes.txt").write_text("Remote.", encoding="utf-8")
+    model = structured_model(Extraction(work_mode=ExtractedValue(text="Remote", gap="x")))
+    ctx, _, _ = ctx_for(en, model, str(cwd / "notes.txt"), "", stop)
+    assert run_round(ctx, cwd=cwd).cancelled
+    assert checklist_path(en).read_bytes() == before
+
+
+def test_cancelled_first_round_writes_no_status(en):
+    put_profile(en, skills="Python")
+    ctx, _, _ = ctx_for(en, structured_model(), KeyboardInterrupt())
+    assert run_round(ctx).cancelled
+    assert not checklist_path(en).exists()

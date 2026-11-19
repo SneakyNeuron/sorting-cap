@@ -30,6 +30,8 @@ ItemId = Literal[
     "industries",
 ]
 Group = Literal["must", "nice"]
+# A checklist item's stored state (Phase 3 R3, `profile/checklist.json`).
+ItemState = Literal["missing", "partial", "known"]
 
 # How new text for an already filled item relates to it (T8): ignored, appended or a conflict.
 Relation = Literal["match", "adds", "contradicts"]
@@ -79,6 +81,8 @@ class ItemUpdate(BaseModel):
 
     `relation` is set by the extraction step when the item was already filled; `origin`
     names where the text came from (a source slug or origin, or the introduction).
+    `gap` is the reader's hole note for the value; `source` the checklist origin of the
+    source (`file:<slug>` / `web:<slug>`), `None` for text from the conversation.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -87,6 +91,8 @@ class ItemUpdate(BaseModel):
     text: str
     relation: Relation | None = None
     origin: str = ""
+    gap: str | None = None
+    source: str | None = None
 
 
 class Conflict(BaseModel):
@@ -101,9 +107,13 @@ class Conflict(BaseModel):
 
 
 class MergeResult(BaseModel):
+    """`changed`: items whose body changed; `applied`: indexes of the updates that were
+    written (filled an empty item or appended to it)."""
+
     model_config = ConfigDict(extra="forbid")
 
     changed: list[ItemId] = Field(default_factory=list)
+    applied: list[int] = Field(default_factory=list)
     conflicts: list[Conflict] = Field(default_factory=list)
 
 
@@ -115,11 +125,16 @@ class ShowProfileInput(ToolInput):
 
 
 class ProfileItemView(BaseModel):
+    """One item as shown: its text and its reconciled checklist status (Phase 3 R14)."""
+
     id: ItemId
     group: Group
     title: str
     text: str
     missing: bool
+    state: ItemState = "missing"
+    note: str | None = None
+    origins: list[str] = Field(default_factory=list)
 
 
 class SourceView(BaseModel):
@@ -131,9 +146,10 @@ class SourceView(BaseModel):
 
 
 class ProfilePaths(BaseModel):
-    """The four workspace paths shown by `/show-profile` and the `/add-information` summary."""
+    """The workspace paths shown by `/show-profile` and the `/add-information` summary."""
 
     profile_path: str
+    checklist_path: str
     sources_dir: str
     manifest_path: str
     filter_path: str
@@ -143,15 +159,21 @@ class ShowProfileOutput(ToolOutput, ProfilePaths):
     """What `/show-profile` read from `profile.md`, `manifest.json` and the filter file.
 
     `filter_text` is `None` while `listing_filter_file.md` does not exist;
-    `manifest_error` is the localized reason when `manifest.json` cannot be read.
+    `manifest_error` is the localized reason when `manifest.json` cannot be read;
+    `status_note` the localized note when `checklist.json` could not be read and the
+    status shown was rebuilt (it is never written here).
     """
 
     items: list[ProfileItemView]
     sources: list[SourceView] = Field(default_factory=list)
     filter_text: str | None = None
     manifest_error: str | None = None
+    status_note: str | None = None
 
     def render(self, ctx: ToolContext) -> None:
+        if self.status_note:
+            say(ctx.console, self.status_note, "yellow")
+            say(ctx.console, "")
         for group in ("must", "nice"):
             say(ctx.console, ctx.msg(f"profile.group.{group}"), "bold")
             for view in (v for v in self.items if v.group == group):
@@ -162,7 +184,16 @@ class ShowProfileOutput(ToolOutput, ProfilePaths):
                         "yellow",
                     )
                     continue
-                say(ctx.console, f"## {view.title}", "cyan")
+                if view.state == "partial":
+                    hole = ctx.msg("profile.show.partial")
+                    note = " ".join((view.note or "").split())
+                    label = f"{hole}: {note}" if note else hole
+                    say(ctx.console, f"## {view.title}  ({label})", "yellow")
+                else:
+                    say(ctx.console, f"## {view.title}", "cyan")
+                if view.origins:
+                    origins = ", ".join(_origin_label(ctx, o) for o in view.origins)
+                    say(ctx.console, ctx.msg("profile.show.origins", origins=origins), "dim")
                 say(ctx.console, view.text)
             say(ctx.console, "")
         say(ctx.console, ctx.msg("profile.show.sources"), "bold")
@@ -183,8 +214,15 @@ class ShowProfileOutput(ToolOutput, ProfilePaths):
         say(ctx.console, ctx.msg("profile.show.files"), "bold")
         for key, path in (
             ("profile", self.profile_path),
+            ("checklist", self.checklist_path),
             ("sources", self.sources_dir),
             ("manifest", self.manifest_path),
             ("filter", self.filter_path),
         ):
             say(ctx.console, f"- {ctx.msg(f'profile.show.file.{key}')}: {path}")
+
+
+def _origin_label(ctx: ToolContext, origin: str) -> str:
+    """A fixed origin in the UI language; `file:<slug>` / `web:<slug>` as stored."""
+    key = f"profile.origin.{origin}"
+    return ctx.msg(key) if ":" not in origin and ctx.texts.has(key) else origin
