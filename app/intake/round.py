@@ -101,6 +101,9 @@ class RoundContext:
     cwd: Path | None = None
     scorer: Scorer | None = None
     home: Path | None = None
+    # reports of the sources `ingest` handled through this context (not part of the
+    # round state): the graph gives them back to the agent after a failed turn
+    ingested: list[SourceReport] = field(default_factory=list)
 
     @classmethod
     def open(
@@ -285,13 +288,29 @@ class RoundContext:
                 report.cv = True
             if result.status == "added":
                 self.read(entry, report)
+        self._add_states(report)
+        self.ingested.append(report)
+        return result, report
+
+    def read_stored(self, entry: ManifestEntry) -> SourceReport:
+        """Read a source already stored but not yet extracted (a drop-in, or one an
+        earlier round left unextracted) and report it as `added` (R7)."""
+        report = SourceReport(origin=entry.origin, status="added")
+        self.read(entry, report)
+        self._add_states(report)
+        return report
+
+    def _add_states(self, report: SourceReport) -> None:
         touched = dict.fromkeys([*report.filled, *report.added_to, *report.conflicts])
         if report.cv:
             touched[CV_ITEM] = None
         if touched:
             status = self.status()
             report.states = {i: status.items[i].state for i in touched if i in status.items}
-        return result, report
+
+    def announce(self, result: SourceResult, report: SourceReport) -> None:
+        """Print the one-line chat report of a source (R5)."""
+        say(self.ctx.console, self.report_line(result, report), _style(result))
 
     def report_line(self, result: SourceResult, report: SourceReport) -> str:
         """The one-line chat report of a source (R5), in the UI language."""
@@ -365,7 +384,7 @@ class RoundContext:
             if not self.ctx.confirm(question, default=False):
                 return IngestSourceResult(ok=False, spec=args.spec, refused="declined")
         result, report = self.ingest(verdict.spec, cv=args.cv)
-        say(self.ctx.console, self.report_line(result, report), _style(result))
+        self.announce(result, report)
         return IngestSourceResult(ok=True, spec=verdict.spec, report=report)
 
     def find_files(self, args: FindFilesArgs) -> FindFilesResult:

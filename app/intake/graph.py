@@ -1,25 +1,32 @@
-"""The intake round as a LangGraph `StateGraph` (R9, R10, R13, T8, T10).
+"""The intake round as a LangGraph `StateGraph` (Phase 3 R1, R5, R10–R13, R15, T3).
 
-    start → ask_sources* → ingest → intro → ask* → write → filter
-    start → ingest → write → filter                      (headless)
+    start → agent → listen → intake_message → agent … → write → filter
+    start → write → filter                                          (headless)
 
-`start` reads `profile.md` and picks up dropped-in files (R11). `ask_sources` collects
-paths and URLs one per line (empty line to continue); `ingest` copies them and extracts
-every source not yet extracted (R10) from its stored `text.md`. `intro` takes the
-free-form introduction, `ask` one prewritten question per still-missing item in R12
-order. Questions are asked with `interrupt()`; `run_round` resumes the graph with
-`ctx.text()` answers under one thread id per round. `next` (or an empty answer) skips a
-question, `done` ends the round at once (localized words, R9).
+`start` picks up dropped-in files, reads `profile.md` and the reconciled checklist
+status, ingests the `--source` specs (headless) and reads every source not yet
+extracted with the toolless reader (R7). `agent` runs one intake-agent turn
+(`app/intake/agent.py`), `listen` waits for the user's next message with
+`interrupt()`, and `intake_message` ends the round on `done` (cs also `hotovo`) or
+Ctrl-D, else detects the paths and URLs in the message and ingests and reads each one,
+with a one-line chat report (R5); the agent then gets the message and the reports.
 
-Nothing is written to `profile.md` before `write`: a cancelled round (Ctrl-C / Ctrl-D)
-leaves it as it was, and sources copied so far stay with `extracted` false, so the next
-round extracts them. `write` merges (answers replace, sources and the introduction fill,
-R13), saves `profile.md`, then `profile/checklist.json` whenever the reconciled
-status differs from the stored file (Phase 3 R12, `app/intake/status.py`), and only
-then marks the extracted sources. `filter`
-regenerates `listing_filter_file.md` when the profile changed or the file is missing
-(R14, T9); on a model error, or a Ctrl-C during that call, the previous file is kept
-and the summary notes it.
+The round ends when the agent calls `finish`, the user types `done` or presses
+Ctrl-D, or `MAX_FAILURES` agent turns fail in a row (with a summary note, R11);
+every one of these saves. Ctrl-C cancels: `profile.md` and `checklist.json` are left
+as they were, and copied sources stay unextracted, so the next round reads them.
+
+Nothing is written to `profile.md` before `write`. `write` merges the direct answers
+and the source values, saves `profile.md`, then `profile/checklist.json` whenever the
+status differs from the stored file, and only then marks the extracted sources (R12).
+`filter` regenerates `listing_filter_file.md` when the profile changed or the file is
+missing; on a model error, or a Ctrl-C during that call, the previous file is kept and
+the summary notes it.
+
+The state is plain JSON (`RoundState`): the round's `RoundData` and the conversation
+as message dicts, held only by the round's in-memory checkpointer; nothing of the
+conversation is written anywhere (R15). Every node sets `goto`, read by the one edge
+function.
 """
 
 from __future__ import annotations
@@ -27,53 +34,41 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from app.intake.checklist import CV_ITEM, ITEMS, item
-from app.intake.extract import CHAR_BUDGET, extract, to_updates
+from app.intake.agent import TurnOutcome, bind, run_turn
+from app.intake.checklist import CV_ITEM, ITEMS
+from app.intake.detect import MAX_SOURCES, detect, split_cap
+from app.intake.extract import CHAR_BUDGET
 from app.intake.filter_file import generate, needs_filter, stored_texts, write_filter
-from app.intake.profile import (
-    cv_body,
-    load_profile,
-    merge,
-    missing_items,
-    profile_path,
-    save_profile,
-)
+from app.intake.profile import cv_body, merge, missing_items, profile_path, save_profile
+from app.intake.round import RoundContext
 from app.intake.sources import (
-    ingest_source,
+    SourcesError,
     ingest_sources,
     load_manifest,
     mark_extracted,
     scan_dropped,
     set_cv,
-    source_text,
     unextracted,
 )
-from app.intake.status import (
-    apply_changes,
-    checklist_path,
-    holes,
-    load_status,
-    now_utc,
-    reconcile,
-    round_changes,
-    save_status,
-    source_origin,
-)
-from app.schemas.checklist import ChecklistStatus
-from app.schemas.intake import NoteKind, RoundNote, RoundResult, RoundState
-from app.schemas.profile import ItemUpdate, ProfileDoc
-from app.schemas.sources import Manifest, ManifestEntry, SourceResult
+from app.intake.status import holes, load_status, now_utc, save_status
+from app.messages import escape_controls, say, short_error
+from app.schemas.intake import RoundResult, RoundState
+from app.schemas.intake_agent import RoundData, SourceReport
+from app.schemas.sources import SourceResult
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
+    from langchain_core.messages import BaseMessage
 
     from app.guard import Scorer
     from app.tools.context import ToolContext
 
 RECURSION_LIMIT = 10_000
-Answer = Literal["done", "skip", "text"]
+MAX_FAILURES = 3  # agent turns failed in a row that end (and save) the round (R11)
+# resumes `listen` for Ctrl-D (`Command(resume=None)` would not resume the graph)
+EOF: dict[str, bool] = {"eof": True}
 
 
 def words(ctx: ToolContext, key: str) -> set[str]:
@@ -81,65 +76,248 @@ def words(ctx: ToolContext, key: str) -> set[str]:
     return {w.strip().casefold() for w in ctx.msg(key).split(",") if w.strip()}
 
 
-def classify(ctx: ToolContext, answer: str) -> Answer:
-    """`done` ends the round, `next` or an empty answer skips, anything else is text."""
-    word = answer.strip().casefold()
-    if not word or word in words(ctx, "intake.words.next"):
-        return "skip"
-    if word in words(ctx, "intake.words.done"):
-        return "done"
-    return "text"
+def is_done(ctx: ToolContext, message: str) -> bool:
+    """The whole message is `done` (cs also `hotovo`), ignoring case and spaces (R10)."""
+    return message.strip().casefold() in words(ctx, "intake.words.done")
 
 
-class _Round:
-    """Read and change one node's view of the state; `changes()` is the node's return."""
+def route(state: RoundState) -> str:
+    """The one edge function: every node names the node to run next."""
+    return state.get("goto") or "write"
 
-    def __init__(self, state: RoundState) -> None:
-        self.state = state
-        self.sources = list(state.get("sources", []))
-        self.updates = list(state.get("updates", []))
-        self.answers = dict(state.get("answers", {}))
-        self.extracted = list(state.get("extracted", []))
-        self.cv_slugs = list(state.get("cv_slugs", []))
-        self.notes = list(state.get("notes", []))
 
-    def changes(self, **extra: Any) -> dict[str, Any]:
+class IntakeNodes:
+    """The graph's nodes over one tool context and chat model (D20). The model is the
+    intake agent (bound to its tools per turn) and, unbound, the source reader and the
+    filter generator."""
+
+    def __init__(
+        self,
+        ctx: ToolContext,
+        model: BaseChatModel,
+        *,
+        cwd: Path | None = None,
+        scorer: Scorer | None = None,
+        home: Path | None = None,
+    ) -> None:
+        self.ctx = ctx
+        self.model = model
+        self.cwd = cwd
+        self.scorer = scorer
+        self.home = home
+
+    def round(self, state: RoundState) -> RoundContext:
+        data = RoundData.model_validate(state.get("round") or {})
+        return RoundContext(self.ctx, self.model, data, self.cwd, self.scorer, self.home)
+
+    # --- start ---------------------------------------------------------------------
+
+    def start(self, state: RoundState) -> dict[str, Any]:
+        ctx = self.ctx
+        headless = bool(state.get("headless"))
+        dropped = scan_dropped(ctx, scorer=self.scorer)
+        round_ = RoundContext.open(
+            ctx, self.model, cwd=self.cwd, scorer=self.scorer, home=self.home
+        )
+        stored = load_status(ctx.workspace).stored
+        data = round_.data
+        data.sources.extend(dropped)
+        if headless:
+            data.sources.extend(
+                ingest_sources(ctx, state.get("specs", []), cwd=self.cwd, scorer=self.scorer)
+            )
+        else:  # drop-ins that were not stored are reported like a detected source
+            for result in dropped:
+                if result.status in ("added", "skipped_duplicate"):
+                    continue
+                report = SourceReport(origin=result.origin, status=result.status, error=result.code)
+                data.reports.append(report)
+                round_.announce(result, report)
+        by_slug = {r.slug: r for r in dropped if r.status == "added" and r.slug}
+        for entry in unextracted(ctx.workspace):
+            report = round_.read_stored(entry)
+            if not headless:
+                data.reports.append(report)
+                result = by_slug.get(entry.slug) or SourceResult(
+                    origin=entry.origin, status="added", type=entry.type, slug=entry.slug
+                )
+                round_.announce(result, report)
         return {
-            "sources": self.sources,
-            "updates": self.updates,
-            "answers": self.answers,
-            "extracted": self.extracted,
-            "cv_slugs": self.cv_slugs,
-            "notes": self.notes,
-            **extra,
+            "round": data.model_dump(mode="json"),
+            "history": [],
+            "message": None,
+            "failures": 0,
+            "status_stored": stored.model_dump(mode="json") if stored else None,
+            "profile_existed": profile_path(ctx.workspace).exists(),
+            "goto": "write" if headless else "agent",
         }
 
-    def base(self) -> ProfileDoc:
-        return ProfileDoc.model_validate(self.state.get("base", {}))
+    # --- conversation --------------------------------------------------------------
 
-    def item_updates(self) -> list[ItemUpdate]:
-        return [ItemUpdate.model_validate(u) for u in self.updates]
+    def agent(self, state: RoundState) -> dict[str, Any]:
+        """One agent turn. A failed turn (R11) keeps everything recorded and gives the
+        source reports it consumed back to the next turn; an `OSError` or a manifest
+        error inside a tool counts as a failed turn. Ctrl-D at a confirmation inside
+        the turn ends and saves the round, keeping what the turn recorded."""
+        from langchain_core.messages import HumanMessage, messages_from_dict, messages_to_dict
 
-    def doc(self) -> ProfileDoc:
-        """The profile as it would be if the round ended now."""
-        return merge(self.base(), answers=self.answers, updates=self.item_updates())[0]
+        ctx = self.ctx
+        round_ = self.round(state)
+        history = messages_from_dict(state.get("history", []))
+        message = state.get("message")
+        pending = list(round_.data.reports)
+        try:
+            outcome = run_turn(round_, bind(self.model, round_), history, message)
+        except EOFError:
+            return {"round": round_.data.model_dump(mode="json"), "goto": "write"}
+        except (OSError, SourcesError) as exc:
+            detail = exc.text(ctx.texts) if isinstance(exc, SourcesError) else short_error(exc)
+            say(ctx.console, ctx.msg("intake.agent.failed", detail=detail), "yellow")
+            kept: list[BaseMessage] = [HumanMessage(message)] if message is not None else []
+            outcome = TurnOutcome("failed", error=detail, messages=kept)
+        failures = int(state.get("failures", 0))
+        if outcome.failed:
+            failures += 1
+            # the agent never saw these reports: show them in the next context
+            round_.data.reports = [*pending, *round_.ingested]
+        else:
+            failures = 0
+        goto = "listen"
+        if round_.data.finished:
+            goto = "write"
+        elif failures >= MAX_FAILURES:
+            round_.note(
+                "agent_failed",
+                ctx.msg("intake.origin.agent"),
+                ctx.msg("intake.note.agent_failed", count=failures),
+            )
+            goto = "write"
+        return {
+            "round": round_.data.model_dump(mode="json"),
+            "history": messages_to_dict([*history, *outcome.messages]),
+            "message": None,
+            "failures": failures,
+            "goto": goto,
+        }
 
-    def manifest(self, workspace: Path) -> Manifest:
-        """The manifest with the sources the extraction called a CV flagged."""
-        manifest = load_manifest(workspace)
-        for entry in manifest.sources:
-            if entry.slug in self.cv_slugs:
-                entry.cv = True
-        return manifest
+    def listen(self, state: RoundState) -> dict[str, Any]:
+        """Wait for the user's next message; `run_round` resumes with the text, or with
+        `EOF` for Ctrl-D. Nothing else happens here, as the node reruns on resume."""
+        from langgraph.types import interrupt
 
-    def note(self, kind: NoteKind, subject: str, text: str) -> None:
-        self.notes.append(RoundNote(kind=kind, subject=subject, text=text).model_dump())
+        answer = interrupt({"prompt": self.ctx.msg("intake.agent.prompt")})
+        return {"message": answer if isinstance(answer, str) else None, "goto": "intake_message"}
 
-    def add_sources(self, results: Iterable[SourceResult]) -> None:
-        self.sources.extend(r.model_dump(mode="json") for r in results)
+    def intake_message(self, state: RoundState) -> dict[str, Any]:
+        """`done` / Ctrl-D end the round without a model call (R10); an empty message
+        is ignored; otherwise every detected source is ingested and read, reported in
+        one chat line, and its report kept for the agent (R5). Sources beyond
+        `MAX_SOURCES` are reported as skipped. Ctrl-D at a prompt during ingestion
+        (the classifier offer) ends and saves the round."""
+        ctx = self.ctx
+        message = state.get("message")
+        if message is None or is_done(ctx, message):
+            return {"message": None, "goto": "write"}
+        if not message.strip():
+            return {"message": None, "goto": "listen"}
+        round_ = self.round(state)
+        take, skipped = split_cap(detect(message, self.cwd or Path.cwd()))
+        goto = "agent"
+        try:
+            for found in take:
+                result, report = round_.ingest(found.normalised)
+                round_.data.reports.append(report)
+                round_.announce(result, report)
+        except EOFError:
+            goto = "write"
+        else:
+            for found in skipped:
+                text = ctx.msg(
+                    "intake.report.skipped_cap",
+                    origin=escape_controls(found.spec),
+                    limit=MAX_SOURCES,
+                )
+                say(ctx.console, text, "yellow")
+        return {"round": round_.data.model_dump(mode="json"), "goto": goto}
 
-    def add_updates(self, updates: Iterable[ItemUpdate]) -> None:
-        self.updates.extend(u.model_dump(mode="json") for u in updates)
+    # --- end of the round ----------------------------------------------------------
+
+    def write(self, state: RoundState) -> dict[str, Any]:
+        ctx = self.ctx
+        round_ = self.round(state)
+        data = round_.data
+        base = data.base
+        new_doc, merged = merge(
+            base,
+            answers={k: v for k, v in data.answers.items()},
+            updates=data.updates,
+            texts=ctx.texts,
+        )
+        for slug in data.cv_slugs:
+            set_cv(ctx.workspace, slug)
+        status = round_.status(now_utc())
+        manifest = load_manifest(ctx.workspace)
+        status_written = status.model_dump(mode="json") != state.get("status_stored")
+        cv_changed = cv_body(manifest).strip() != base.body(CV_ITEM).strip()
+        changed = list(merged.changed)
+        if cv_changed:
+            changed = [i.id for i in ITEMS if i.id in changed or i.id == CV_ITEM]
+        written = bool(changed or data.extracted or not state.get("profile_existed", False))
+        if written:
+            save_profile(ctx.workspace, new_doc, ctx.texts, manifest)
+        if status_written:  # after `profile.md`, also when only the status changed (R12)
+            save_status(ctx.workspace, status)
+        if written:
+            mark_extracted(ctx.workspace, data.extracted)
+        result = RoundResult(
+            sources=data.sources,
+            changed=changed,
+            missing=missing_items(new_doc, manifest),
+            partial=holes(status),
+            conflicts=merged.conflicts,
+            notes=data.notes,
+            extracted=data.extracted if written else [],
+            profile_written=written,
+            status_written=status_written,
+            profile_changed=bool(changed),
+        )
+        return {"result": result.model_dump(mode="json"), "goto": "filter"}
+
+    def filter(self, state: RoundState) -> dict[str, Any]:
+        ctx = self.ctx
+        result = RoundResult.model_validate(state["result"])
+        if not needs_filter(ctx.workspace, profile_changed=result.profile_changed):
+            return {"goto": "__end__"}
+        sources, unreadable = stored_texts(ctx.workspace, load_manifest(ctx.workspace))
+        for origin in unreadable:
+            result.note(
+                "filter_text_missing",
+                origin,
+                ctx.msg("intake.note.filter_text_missing", origin=origin),
+            )
+        outcome = generate(self.model, ctx.texts, ctx.workspace, sources=sources)
+        subject = ctx.msg("intake.origin.filter_sources")
+        if outcome.truncated:
+            result.note(
+                "truncated",
+                subject,
+                ctx.msg("intake.note.truncated", origin=subject, limit=CHAR_BUDGET),
+            )
+        if outcome.filter is None:
+            result.note(
+                "model_error_filter",
+                subject,
+                ctx.msg("intake.note.model_error_filter", detail=outcome.error),
+            )
+        else:
+            write_filter(
+                ctx.workspace,
+                outcome.filter,
+                ctx.texts,
+                profile_sha256=outcome.profile_sha256 or "",
+            )
+            result.filter_written = True
+        return {"result": result.model_dump(mode="json"), "goto": "__end__"}
 
 
 def build_graph(
@@ -148,280 +326,27 @@ def build_graph(
     *,
     cwd: Path | None = None,
     scorer: Scorer | None = None,
+    home: Path | None = None,
 ):
-    """The compiled intake graph with an in-memory checkpointer (T10)."""
+    """The compiled intake graph with an in-memory checkpointer (T3)."""
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.graph import END, START, StateGraph
-    from langgraph.types import interrupt
 
-    texts = ctx.texts
-
-    def truncated(r: _Round, subject: str) -> None:
-        r.note(
-            "truncated",
-            subject,
-            ctx.msg("intake.note.truncated", origin=subject, limit=CHAR_BUDGET),
-        )
-
-    def extract_source(r: _Round, entry: ManifestEntry) -> None:
-        try:
-            text = source_text(ctx.workspace, entry.slug)
-        except (OSError, UnicodeDecodeError):
-            r.note(
-                "source_text_missing",
-                entry.origin,
-                ctx.msg("intake.note.source_text_missing", origin=entry.origin),
-            )
-            return
-        outcome = extract(model, texts, r.doc(), text=text, source=True)
-        if outcome.truncated:
-            truncated(r, entry.origin)
-        if outcome.extraction is None:
-            r.note(
-                "model_error_source",
-                entry.origin,
-                ctx.msg(
-                    "intake.note.model_error_source", origin=entry.origin, detail=outcome.error
-                ),
-            )
-            return
-        r.add_updates(to_updates(outcome.extraction, entry.origin, source=source_origin(entry)))
-        r.extracted.append(entry.slug)
-        if outcome.extraction.is_cv and entry.slug not in r.cv_slugs:
-            r.cv_slugs.append(entry.slug)
-
-    # --- nodes -------------------------------------------------------------------
-
-    def start(state: RoundState) -> dict[str, Any]:
-        r = _Round(state)
-        r.add_sources(scan_dropped(ctx, scorer=scorer))
-        base = load_profile(ctx.workspace)
-        loaded = load_status(ctx.workspace)
-        if loaded.invalid:
-            path = str(checklist_path(ctx.workspace))
-            r.note("status_rebuilt", path, ctx.msg("intake.note.status_rebuilt", path=path))
-        status = reconcile(base, load_manifest(ctx.workspace), loaded.stored, now=now_utc())
-        return r.changes(
-            base=base.model_dump(mode="json"),
-            status=status.model_dump(mode="json"),
-            status_stored=loaded.stored.model_dump(mode="json") if loaded.stored else None,
-            profile_existed=profile_path(ctx.workspace).exists(),
-            specs=list(state.get("specs", [])),
-            asked=[],
-            current=None,
-            done=False,
-            collecting=not state.get("headless", False),
-        )
-
-    def ask_sources(state: RoundState) -> dict[str, Any]:
-        specs = list(state.get("specs", []))
-        key = "intake.ask.source_more" if specs else "intake.ask.sources"
-        answer = interrupt({"kind": "source", "prompt": ctx.msg(key)})
-        kind = classify(ctx, answer)
-        if kind == "done":
-            return {"collecting": False, "done": True}
-        if kind == "skip":
-            return {"collecting": False}
-        return {"specs": [*specs, answer.strip()]}
-
-    def ingest(state: RoundState) -> dict[str, Any]:
-        r = _Round(state)
-        r.add_sources(ingest_sources(ctx, state.get("specs", []), cwd=cwd, scorer=scorer))
-        for entry in unextracted(ctx.workspace):
-            extract_source(r, entry)
-        return r.changes()
-
-    def intro(state: RoundState) -> dict[str, Any]:
-        answer = interrupt({"kind": "intro", "prompt": ctx.msg("intake.ask.intro")})
-        kind = classify(ctx, answer)
-        if kind == "done":
-            return {"done": True}
-        if kind == "skip":
-            return {}
-        r = _Round(state)
-        origin = ctx.msg("intake.origin.intro")
-        outcome = extract(model, texts, r.doc(), text=answer)
-        if outcome.truncated:
-            truncated(r, origin)
-        if outcome.extraction is None:
-            r.note(
-                "model_error_intro",
-                origin,
-                ctx.msg("intake.note.model_error_intro", detail=outcome.error),
-            )
-        else:
-            r.add_updates(to_updates(outcome.extraction, origin))
-        return r.changes()
-
-    def next_item(r: _Round) -> str | None:
-        asked = set(r.state.get("asked", []))
-        missing = set(missing_items(r.doc(), r.manifest(ctx.workspace)))
-        return next((i.id for i in ITEMS if i.id in missing and i.id not in asked), None)
-
-    def ask(state: RoundState) -> dict[str, Any]:
-        r = _Round(state)
-        item_id = next_item(r)
-        if item_id is None:
-            return {"current": None}
-        asked = list(state.get("asked", []))
-        request = {
-            "kind": "question",
-            "item_id": item_id,
-            "prompt": item(item_id).question(texts),
-            "note": None if asked else ctx.msg("intake.ask.hint"),
-        }
-        answer = interrupt(request)
-        changes = {"asked": [*asked, item_id], "current": item_id}
-        kind = classify(ctx, answer)
-        if kind == "done":
-            return {**changes, "done": True}
-        if kind == "skip":
-            return changes
-        if item_id == CV_ITEM:
-            result = ingest_source(ctx, answer, cwd=cwd, cv=True, scorer=scorer)
-            r.add_sources([result])
-            if result.status == "added" and result.slug:
-                entry = load_manifest(ctx.workspace).by_slug(result.slug)
-                if entry is not None:
-                    extract_source(r, entry)
-            return r.changes(**changes)
-        title = item(item_id).title(texts)
-        outcome = extract(model, texts, r.doc(), text=answer, question=item_id)
-        if outcome.truncated:
-            truncated(r, title)
-        value = getattr(outcome.extraction, item_id, None) if outcome.extraction else None
-        if outcome.extraction is None:
-            r.note(
-                "model_error_answer",
-                title,
-                ctx.msg("intake.note.model_error_answer", title=title, detail=outcome.error),
-            )
-        else:
-            origin = ctx.msg("intake.origin.answer", title=title)
-            r.add_updates(to_updates(outcome.extraction, origin, skip=item_id))
-        # the answer replaces the item: the extracted value, or the text as typed
-        r.answers[item_id] = value.text.strip() if value and value.text.strip() else answer.strip()
-        return r.changes(**changes)
-
-    def write(state: RoundState) -> dict[str, Any]:
-        r = _Round(state)
-        base = r.base()
-        updates = r.item_updates()
-        new_doc, merged = merge(base, answers=r.answers, updates=updates, texts=texts)
-        for slug in r.cv_slugs:
-            set_cv(ctx.workspace, slug)
-        manifest = load_manifest(ctx.workspace)
-        round_slugs = {s.get("slug") for s in r.sources if s.get("status") == "added"}
-        cv_entries = [
-            e for e in manifest.sources if e.cv and (e.slug in r.cv_slugs or e.slug in round_slugs)
-        ]
-        now = now_utc()
-        started = ChecklistStatus.model_validate(state.get("status", {}))
-        learned = round_changes(updates, merged.applied, r.answers, cv_entries)
-        status = reconcile(new_doc, manifest, apply_changes(started, learned, now=now), now=now)
-        status_written = status.model_dump(mode="json") != state.get("status_stored")
-        cv_changed = cv_body(manifest).strip() != base.body(CV_ITEM).strip()
-        changed = list(merged.changed)
-        if cv_changed:
-            changed = [i.id for i in ITEMS if i.id in changed or i.id == CV_ITEM]
-        written = bool(changed or r.extracted or not state.get("profile_existed", False))
-        if written:
-            save_profile(ctx.workspace, new_doc, texts, manifest)
-        if status_written:  # after `profile.md`, also when only the status changed (R12)
-            save_status(ctx.workspace, status)
-        if written:
-            mark_extracted(ctx.workspace, r.extracted)
-        result = RoundResult(
-            sources=[SourceResult.model_validate(s) for s in r.sources],
-            changed=changed,
-            missing=missing_items(new_doc, manifest),
-            partial=holes(status),
-            conflicts=merged.conflicts,
-            notes=[RoundNote.model_validate(n) for n in r.notes],
-            extracted=r.extracted if written else [],
-            profile_written=written,
-            status_written=status_written,
-            profile_changed=bool(changed),
-        )
-        return {"result": result.model_dump(mode="json")}
-
-    def filter_node(state: RoundState) -> dict[str, Any]:
-        result = RoundResult.model_validate(state["result"])
-        if not needs_filter(ctx.workspace, profile_changed=result.profile_changed):
-            return {}
-        sources, unreadable = stored_texts(ctx.workspace, load_manifest(ctx.workspace))
-        for origin in unreadable:
-            result.notes.append(
-                RoundNote(
-                    kind="filter_text_missing",
-                    subject=origin,
-                    text=ctx.msg("intake.note.filter_text_missing", origin=origin),
-                )
-            )
-        outcome = generate(model, texts, ctx.workspace, sources=sources)
-        if outcome.truncated:
-            origin = ctx.msg("intake.origin.filter_sources")
-            result.notes.append(
-                RoundNote(
-                    kind="truncated",
-                    subject=origin,
-                    text=ctx.msg("intake.note.truncated", origin=origin, limit=CHAR_BUDGET),
-                )
-            )
-        if outcome.filter is None:
-            result.notes.append(
-                RoundNote(
-                    kind="model_error_filter",
-                    subject=ctx.msg("intake.origin.filter_sources"),
-                    text=ctx.msg("intake.note.model_error_filter", detail=outcome.error),
-                )
-            )
-        else:
-            write_filter(
-                ctx.workspace,
-                outcome.filter,
-                texts,
-                profile_sha256=outcome.profile_sha256 or "",
-            )
-            result.filter_written = True
-        return {"result": result.model_dump(mode="json")}
-
-    # --- edges -------------------------------------------------------------------
-
-    def after_start(state: RoundState) -> str:
-        return "ask_sources" if state.get("collecting") else "ingest"
-
-    def after_sources(state: RoundState) -> str:
-        return "ask_sources" if state.get("collecting") else "ingest"
-
-    def after_ingest(state: RoundState) -> str:
-        return "write" if state.get("headless") or state.get("done") else "intro"
-
-    def after_intro(state: RoundState) -> str:
-        return "write" if state.get("done") else "ask"
-
-    def after_ask(state: RoundState) -> str:
-        return "write" if state.get("done") or state.get("current") is None else "ask"
-
+    nodes = IntakeNodes(ctx, model, cwd=cwd, scorer=scorer, home=home)
     graph = StateGraph(RoundState)
-    for name, node in (
-        ("start", start),
-        ("ask_sources", ask_sources),
-        ("ingest", ingest),
-        ("intro", intro),
-        ("ask", ask),
-        ("write", write),
-        ("filter", filter_node),
-    ):
-        graph.add_node(name, node)
+    targets = {
+        "start": ["agent", "write"],
+        "agent": ["listen", "write"],
+        "listen": ["intake_message"],
+        "intake_message": ["agent", "listen", "write"],
+        "write": ["filter"],
+        "filter": [END],
+    }
+    for name in targets:
+        graph.add_node(name, getattr(nodes, name))
     graph.add_edge(START, "start")
-    graph.add_conditional_edges("start", after_start, ["ask_sources", "ingest"])
-    graph.add_conditional_edges("ask_sources", after_sources, ["ask_sources", "ingest"])
-    graph.add_conditional_edges("ingest", after_ingest, ["intro", "write"])
-    graph.add_conditional_edges("intro", after_intro, ["ask", "write"])
-    graph.add_conditional_edges("ask", after_ask, ["ask", "write"])
-    graph.add_edge("write", "filter")
-    graph.add_edge("filter", END)
+    for name, ends in targets.items():
+        graph.add_conditional_edges(name, route, ends)
     return graph.compile(checkpointer=InMemorySaver())
 
 
@@ -434,15 +359,17 @@ def run_round(
     scorer: Scorer | None = None,
     model: BaseChatModel | None = None,
 ) -> RoundResult:
-    """Run one intake round; in chat, answer each interrupt with `ctx.text()`.
+    """Run one intake round; in chat, each user message is read with `ctx.text()`.
 
     `model` is the chat model for every call of the round; by default it is built with
-    `ctx.model_factory`. Ctrl-C or Ctrl-D at a prompt cancels the round: `profile.md` is
-    not written, the result has `cancelled` set and lists the sources handled so far.
-    A Ctrl-C during the `filter` node comes after `write` saved the round: its result
-    is returned, not cancelled, with a `filter_interrupted` note (the filter file is
-    left as it was). Batch-level source errors (`SourcesError`, workspace write
-    failures) propagate to the caller.
+    `ctx.model_factory`. Ctrl-D at the message prompt ends and saves the round like
+    `done` (R10). Ctrl-C at any prompt or during a model call cancels it: `profile.md`
+    and `checklist.json` are not written, the result has `cancelled` set and lists the
+    sources handled so far (a Ctrl-D before the conversation starts, at a prompt of
+    `start`, cancels too). A Ctrl-C during the `filter` node comes after `write` saved
+    the round: its result is returned, not cancelled, with a `filter_interrupted` note
+    (the filter file is left as it was). Batch-level source errors (`SourcesError`,
+    workspace write failures outside an agent turn) propagate to the caller.
     """
     from langgraph.types import Command
 
@@ -455,28 +382,26 @@ def run_round(
         out = graph.invoke(payload, config)
         while out.get("__interrupt__"):
             request = out["__interrupt__"][0].value
-            if request.get("note"):
-                ctx.console.print(request["note"], highlight=False, markup=False)
-            answer = ctx.text(request["prompt"])
+            answer: str | dict[str, bool]
+            try:
+                answer = ctx.text(request["prompt"])
+            except EOFError:  # Ctrl-D: end and save (R10)
+                answer = EOF
             out = graph.invoke(Command(resume=answer), config)
     except (KeyboardInterrupt, EOFError):
         values = graph.get_state(config).values
         if values.get("result"):  # stopped in `filter`: `write` already saved the round
             result = RoundResult.model_validate(values["result"])
             result.filter_written = False
-            result.notes.append(
-                RoundNote(
-                    kind="filter_interrupted",
-                    subject=ctx.msg("intake.origin.filter_sources"),
-                    text=ctx.msg("intake.note.filter_interrupted"),
-                )
+            result.note(
+                "filter_interrupted",
+                ctx.msg("intake.origin.filter_sources"),
+                ctx.msg("intake.note.filter_interrupted"),
             )
             return result
-        return RoundResult(
-            cancelled=True,
-            sources=[SourceResult.model_validate(s) for s in values.get("sources", [])],
-        )
+        data = RoundData.model_validate(values.get("round") or {})
+        return RoundResult(cancelled=True, sources=data.sources)
     return RoundResult.model_validate(out["result"])
 
 
-__all__ = ["build_graph", "classify", "run_round", "words"]
+__all__ = ["MAX_FAILURES", "IntakeNodes", "build_graph", "is_done", "route", "run_round", "words"]

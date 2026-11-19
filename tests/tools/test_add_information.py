@@ -1,4 +1,4 @@
-"""`/add-information`: dialog and headless rounds, the summary and errors (R10, R11, R15, R16)."""
+"""`/add-information`: conversation and headless rounds, summary, errors (R10, R11, R15)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,15 @@ from pathlib import Path
 
 import httpx
 import pytest
-from helpers import FakeScorer, NoPrompts, ScriptedPrompter, make_ctx, structured_model
+from helpers import (
+    FakeScorer,
+    NoPrompts,
+    ScriptedPrompter,
+    intake_model,
+    make_ctx,
+    structured_model,
+    tool_call,
+)
 
 from app.guard.quarantine import QUARANTINE_DIR
 from app.intake.filter_file import filter_path
@@ -339,17 +347,27 @@ def test_json_output(en, cwd):
 # --- chat --------------------------------------------------------------------------------
 
 
-def test_chat_without_source_runs_the_dialog(en, cwd):
+def test_chat_without_source_runs_the_conversation(en, cwd, monkeypatch):
+    monkeypatch.chdir(cwd)
     (cwd / "a.txt").write_text("Backend roles.", encoding="utf-8")
-    model = structured_model(roles("Backend developer"), FILTER)
-    prompter = ScriptedPrompter(str(cwd / "a.txt"), "", "", "done")
+    reader = structured_model(roles("Backend developer"), FILTER)
+    model = intake_model("Hi! What are you after?", "Noted.", reader=reader)
+    prompter = ScriptedPrompter(f"my notes: {cwd / 'a.txt'}", "done")
     ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: model)
     out = handle(ctx, AddInformationInput())
     questions = [q for _k, q, _ in prompter.asked]
-    assert questions[0] == EN.message("intake.ask.sources")
-    assert questions[2] == EN.message("intake.ask.intro")
+    assert questions == [EN.message("intake.agent.prompt")] * 2
+    assert EN.message("intake.ask.sources") not in buf.getvalue()
+    assert "Hi! What are you after?" in buf.getvalue()
     assert out.changed == ["target_roles"] and out.filter_written
-    assert ctx.model_factory is not None and model.queue == []
+    assert model.bound and set(model.bound[0]) == {
+        "record_item",
+        "mark_status",
+        "ingest_source",
+        "find_files",
+        "finish",
+    }
+    assert reader.queue == [] and model.script == []
 
 
 def test_chat_with_source_asks_nothing(en, cwd):
@@ -363,8 +381,9 @@ def test_chat_with_source_asks_nothing(en, cwd):
 
 def test_chat_cancel_reports_cancelled(en, cwd):
     (cwd / "a.txt").write_text("Backend roles.", encoding="utf-8")
-    prompter = ScriptedPrompter(str(cwd / "a.txt"), "", KeyboardInterrupt())
-    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: structured_model(roles("x")))
+    prompter = ScriptedPrompter(str(cwd / "a.txt"), KeyboardInterrupt())
+    model = intake_model("Hi!", "ok", reader=structured_model(roles("x")))
+    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: model)
     out = handle(ctx, AddInformationInput())
     assert out.cancelled and [s.status for s in out.sources] == ["added"]
     assert not profile_path(en).exists() and not filter_path(en).exists()
@@ -393,10 +412,9 @@ def test_cancelled_url_source_extracted_next_run_without_refetch(en, classifier)
         fetched.append(str(request.url))
         return pages(request)
 
-    prompter = ScriptedPrompter("https://me.example/cv", "", EOFError())
-    ctx, _ = make_ctx(
-        en, prompter, handler=once, model_factory=lambda _s, _c: structured_model(roles("x"))
-    )
+    prompter = ScriptedPrompter("https://me.example/cv", KeyboardInterrupt())
+    model = intake_model("Hi!", "ok", reader=structured_model(roles("x")))
+    ctx, _ = make_ctx(en, prompter, handler=once, model_factory=lambda _s, _c: model)
     assert handle(ctx, AddInformationInput()).cancelled
     assert load_manifest(en).sources[0].extracted is False
 
@@ -413,8 +431,13 @@ def test_filter_interrupted_round_is_reported_and_incomplete(en, monkeypatch):
         raise KeyboardInterrupt
 
     monkeypatch.setattr("app.intake.graph.generate", interrupted)
-    prompter = ScriptedPrompter("", "", "Backend", "done")
-    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: structured_model(roles("x")))
+    prompter = ScriptedPrompter("Backend", "done")
+    model = intake_model(
+        "Hi!",
+        tool_call("record_item", {"item_id": "target_roles", "text": "Backend"}),
+        "Noted.",
+    )
+    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: model)
     out = handle(ctx, AddInformationInput())
     assert not out.cancelled and out.profile_written and out.incomplete
     out.render(ctx)
@@ -486,7 +509,23 @@ def test_chat_cancel_leaves_checklist_unchanged(en, cwd):
     )
     checklist_path(en).write_text("{hand-broken", encoding="utf-8")
     (cwd / "a.txt").write_text("Backend roles.", encoding="utf-8")
-    prompter = ScriptedPrompter(str(cwd / "a.txt"), "", KeyboardInterrupt())
-    ctx, _ = make_ctx(en, prompter, model_factory=lambda _s, _c: structured_model(roles("x")))
+    prompter = ScriptedPrompter(str(cwd / "a.txt"), KeyboardInterrupt())
+    model = intake_model("Hi!", "ok", reader=structured_model(roles("x")))
+    ctx, _ = make_ctx(en, prompter, model_factory=lambda _s, _c: model)
     assert handle(ctx, AddInformationInput()).cancelled
     assert checklist_path(en).read_text(encoding="utf-8") == "{hand-broken"
+
+
+def test_chat_ctrl_d_saves_the_round(en):
+    prompter = ScriptedPrompter("Backend", EOFError())
+    model = intake_model(
+        "Hi!",
+        tool_call("record_item", {"item_id": "target_roles", "text": "Backend"}),
+        "Noted.",
+        reader=structured_model(FILTER),
+    )
+    ctx, buf = make_ctx(en, prompter, model_factory=lambda _s, _c: model)
+    out = handle(ctx, AddInformationInput())
+    assert not out.cancelled and out.profile_written and out.changed == ["target_roles"]
+    out.render(ctx)
+    assert str(checklist_path(en)) in " ".join(buf.getvalue().split())

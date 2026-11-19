@@ -78,6 +78,27 @@ def scripted_model(*script: Any) -> ScriptedToolModel:
     return ScriptedToolModel(messages=iter([]), script=list(script), received=[], bound=[])
 
 
+class IntakeModel(ScriptedToolModel):
+    """The round's one chat model (Phase 3 T9): tool-calling turns from `script`,
+    structured-output calls (the source reader, the filter) answered by `reader`, a
+    `FakeStructuredModel`."""
+
+    reader: Any = None
+
+    def with_structured_output(self, schema, **kwargs):
+        return self.reader.with_structured_output(schema, **kwargs)
+
+
+def intake_model(*script: Any, reader: FakeStructuredModel | None = None) -> IntakeModel:
+    return IntakeModel(
+        messages=iter([]),
+        script=list(script),
+        received=[],
+        bound=[],
+        reader=reader if reader is not None else structured_model(),
+    )
+
+
 def tool_calls(*calls: tuple[str, dict], text: str = "") -> AIMessage:
     """One AI message with several tool calls (ids `c1`, `c2`, …) and optional text."""
     return AIMessage(

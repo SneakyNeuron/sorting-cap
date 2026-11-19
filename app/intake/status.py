@@ -18,7 +18,7 @@ A round applies what it learned (`apply_changes`) and saves the status after
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,10 +26,9 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.files import private_dir, write_private
-from app.intake.checklist import CV_ITEM, ITEMS, is_item_id
+from app.intake.checklist import ITEMS
 from app.intake.profile import PROFILE_DIR, is_filled
 from app.schemas.checklist import (
-    ORIGIN_CONVERSATION,
     ORIGIN_HAND_EDIT,
     ORIGIN_PROFILE,
     ChecklistStatus,
@@ -38,7 +37,7 @@ from app.schemas.checklist import (
     StatusChange,
     dedupe,
 )
-from app.schemas.profile import ItemId, ItemUpdate, ProfileDoc
+from app.schemas.profile import ItemId, ProfileDoc
 from app.schemas.sources import Manifest, ManifestEntry
 
 CHECKLIST_FILE = "checklist.json"
@@ -157,35 +156,3 @@ def holes(status: ChecklistStatus) -> list[ItemHole]:
         for i in ITEMS
         if (s := status.items.get(i.id)) is not None and s.state == "partial"
     ]
-
-
-def round_changes(
-    updates: list[ItemUpdate],
-    applied: Iterable[int],
-    answers: Mapping[str, str],
-    cv_entries: Iterable[ManifestEntry],
-) -> list[StatusChange]:
-    """What a round learned, in the order it is applied (R7, R9, R13).
-
-    A source value the merge wrote (`applied` indexes into `updates`) is `partial` with
-    the reader's `gap`, else `known`; text from the conversation has origin
-    `conversation`. A direct answer makes its item `known` (note cleared). A source
-    flagged `cv` this round makes the CV item `known` from that source.
-    """
-    changes: list[StatusChange] = []
-    for index in applied:
-        update = updates[index]
-        changes.append(
-            StatusChange(
-                item_id=update.item_id,
-                state="partial" if update.gap else "known",
-                note=update.gap,
-                origin=update.source or ORIGIN_CONVERSATION,
-            )
-        )
-    for item_id, answer in answers.items():
-        if answer.strip() and is_item_id(item_id) and item_id != CV_ITEM:
-            changes.append(StatusChange(item_id=item_id, state="known", origin=ORIGIN_CONVERSATION))
-    for entry in cv_entries:
-        changes.append(StatusChange(item_id=CV_ITEM, state="known", origin=source_origin(entry)))
-    return changes

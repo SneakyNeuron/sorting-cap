@@ -138,36 +138,28 @@ class ExtractOutcome(BaseModel):
 
 
 class RoundState(TypedDict, total=False):
-    """The intake graph's state. Plain JSON values only, so the checkpointer stores
-    them without custom types; models are dumped with `model_dump(mode="json")`.
+    """The intake graph's state (Phase 3 T3). Plain JSON values only, so the
+    checkpointer stores them without custom types; models are dumped with
+    `model_dump(mode="json")`.
 
-    `base` is the profile as read at the start of the round (`ProfileDoc`); nothing is
-    written before the `write` node. `updates` are fill-only `ItemUpdate`s from sources
-    and the introduction, `answers` the direct answers (item id → text) that replace
-    their items. `collecting` is true while sources are being asked for, `current` is
-    the item of the last question asked. `extracted` are the slugs extracted this round
-    (marked in the manifest after `profile.md` is written), `cv_slugs` the ones the
-    extraction called a CV. `status` is the checklist status reconciled at the start
-    (`ChecklistStatus`), `status_stored` the stored file as read (`None` when missing
-    or invalid), so `write` saves the status only when it differs (Phase 3 R12).
+    `round` is the round's `RoundData` (nothing is written before the `write` node);
+    `history` the conversation as LangChain message dicts (`messages_to_dict`), kept
+    only in the in-memory checkpointer of the round (R15). `message` is the user's
+    latest message (`None` for Ctrl-D), `failures` the agent turns failed in a row,
+    `goto` the node to run next (set by every node, read by the one edge function).
+    `status_stored` is the stored `checklist.json` as read (`None` when missing or
+    invalid), so `write` saves the status only when it differs (R12).
     """
 
     headless: bool
     specs: list[str]
-    base: dict[str, Any]
+    round: dict[str, Any]
+    history: list[dict[str, Any]]
+    message: str | None
+    failures: int
+    goto: str
     profile_existed: bool
-    sources: list[dict[str, Any]]
-    updates: list[dict[str, Any]]
-    answers: dict[str, str]
-    asked: list[str]
-    current: str | None
-    collecting: bool
-    extracted: list[str]
-    cv_slugs: list[str]
-    notes: list[dict[str, Any]]
-    status: dict[str, Any]
     status_stored: dict[str, Any] | None
-    done: bool
     result: dict[str, Any] | None
 
 
@@ -183,6 +175,7 @@ NoteKind = Literal[
     "filter_interrupted",
     "filter_text_missing",
     "status_rebuilt",
+    "agent_failed",
 ]
 
 
@@ -225,6 +218,10 @@ class RoundResult(BaseModel):
     status_written: bool = False
     profile_changed: bool = False
     filter_written: bool = False
+
+    def note(self, kind: NoteKind, subject: str, text: str) -> None:
+        """Add a summary note (`text` already localized)."""
+        self.notes.append(RoundNote(kind=kind, subject=subject, text=text))
 
 
 # --- `/add-information` (R9, R15, R16) -------------------------------------------------

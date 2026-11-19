@@ -1,8 +1,8 @@
 """`/add-information` (not agent-callable): one intake round and its summary (R9, R15, R16).
 
-In chat without `--source` it runs the dialog graph (sources, introduction,
-questions). With `--source` (repeatable), and always in the headless runner, it runs
-the graph without the dialog: the given sources, dropped-in files and sources not yet
+In chat without `--source` it runs the conversation with the intake agent (Phase 3
+R1). With `--source` (repeatable), and always in the headless runner, it runs the
+graph without the agent: the given sources, dropped-in files and sources not yet
 extracted are ingested, the profile filled and the filter file regenerated.
 
 The provider and model are checked, and the model built, before anything touches the
