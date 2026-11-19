@@ -24,10 +24,11 @@ Goal: the user tells the cap about themselves by chat and sources, and gets revi
 - [x] `listing_filter_file.md` (what the user is looking for and all derived filters) regenerated after every intake round; intake loop can be re-entered anytime
 
 ## Phase 3: Conversational intake
-Spec: [backlog request](backlog/2026-11-19-conversational-intake.md)
+Spec: specs/features/03-conversational-intake/
+Request: [backlog request](backlog/2026-11-19-conversational-intake.md)
 Goal: `/add-information` becomes a free conversation that knows what it still needs and gathers files and links mentioned anywhere in a message.
 - [ ] Stored per-item status for the checklist (known or missing, and where from: conversation, file, web), kept in the workspace
-- [ ] The LLM drives the conversation using that status: asks for missing must-know items first, fills holes, decides when to finish; fallback when the model fails or is small
+- [ ] The LLM drives the conversation using that status: asks for missing must-know items first, fills holes, decides when to finish; failure handling when the model fails (no scripted fallback)
 - [ ] Paths and URLs detected in any message, ingested immediately through the sources module and guard, and reported; the rest of the message used as information
 - [ ] Phase 2 maintainability follow-ups ([backlog](backlog/2026-11-19-phase2-maintainability.md)), including the intake graph structure (D20)
 - [ ] mypy added to CI and the definition of done; existing errors fixed
