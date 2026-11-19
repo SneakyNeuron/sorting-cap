@@ -110,8 +110,9 @@ class FieldSpec:
     name: str
     flag: str
     positional: bool
-    # "str" | "bool". Other scalars (int, …) are passed as strings and coerced by the
-    # input model, so a bad value gets the localized validation message.
+    # "str" | "bool" | "list". Other scalars (int, …) are passed as strings and coerced
+    # by the input model, so a bad value gets the localized validation message. A
+    # list-valued field is a repeatable flag (`--source a --source b`).
     kind: str
     choices: list[str] | None
     required: bool
@@ -137,6 +138,8 @@ def field_spec(name: str, info: FieldInfo) -> FieldSpec:
         choices = [str(m.value) for m in annotation]
     elif annotation is bool:
         kind = "bool"
+    elif typing.get_origin(annotation) in (list, tuple, set, frozenset):
+        kind = "list"
     return FieldSpec(
         name=name,
         flag="--" + name.replace("_", "-"),
@@ -169,6 +172,8 @@ def build_parser(registry: Registry, texts: Texts) -> argparse.ArgumentParser:
                 p.add_argument(
                     spec.flag, dest=spec.name, action=argparse.BooleanOptionalAction, **kwargs
                 )
+            elif spec.kind == "list":
+                p.add_argument(spec.flag, dest=spec.name, action="append", **kwargs)
             else:
                 p.add_argument(spec.flag, dest=spec.name, **kwargs)
     return parser

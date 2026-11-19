@@ -1,14 +1,19 @@
-"""Intake: the extraction output (T8), the round's graph state and its result (R9, R15, T10)."""
+"""Intake: the extraction output (T8), the round's graph state and result, and
+`-add-information` (R9, R15, R16, T10)."""
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.intake.checklist import ItemId
+from app.schemas.base import ToolInput, ToolOutput
 from app.schemas.profile import Conflict, Relation
 from app.schemas.sources import SourceResult
+
+if TYPE_CHECKING:
+    from app.tools.context import ToolContext
 
 # --- extraction (T8) ---------------------------------------------------------------
 
@@ -108,6 +113,7 @@ NoteKind = Literal[
     "model_error_intro",
     "model_error_source",
     "source_text_missing",
+    "model_error_filter",
 ]
 
 
@@ -127,6 +133,7 @@ class RoundResult(BaseModel):
     `cancelled`: the round ended by Ctrl-C / Ctrl-D; `profile.md` was not written and
     only `sources` (already copied) is meaningful. `profile_changed`: an item or the CV
     section changed. `extracted`: slugs marked `extracted` in the manifest.
+    `filter_written`: `listing_filter_file.md` was regenerated this round (R14).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -140,3 +147,107 @@ class RoundResult(BaseModel):
     extracted: list[str] = Field(default_factory=list)
     profile_written: bool = False
     profile_changed: bool = False
+    filter_written: bool = False
+
+
+# --- `-add-information` (R9, R15, R16) -------------------------------------------------
+
+
+class AddInformationInput(ToolInput):
+    """`--source` (repeatable): ingest these and the dropped-in files, ask no questions."""
+
+    source: list[str] = Field(default_factory=list)
+
+
+class AddInformationOutput(ToolOutput):
+    """The round summary (R15).
+
+    `sources` are this round's source outcomes, without duplicate drop-ins (R11).
+    `source_dirs` is every stored source folder from the manifest.
+    """
+
+    cancelled: bool = False
+    sources: list[SourceResult] = Field(default_factory=list)
+    changed: list[ItemId] = Field(default_factory=list)
+    missing: list[ItemId] = Field(default_factory=list)
+    conflicts: list[Conflict] = Field(default_factory=list)
+    notes: list[RoundNote] = Field(default_factory=list)
+    profile_written: bool = False
+    filter_written: bool = False
+    profile_path: str
+    sources_dir: str
+    source_dirs: list[str] = Field(default_factory=list)
+    manifest_path: str
+    filter_path: str
+
+    def render(self, ctx: ToolContext) -> None:
+        from pathlib import Path
+
+        from rich.text import Text
+
+        from app.guard.quarantine import escape_controls
+        from app.intake.checklist import item
+
+        def say(text: str, style: str | None = None) -> None:
+            ctx.console.print(Text(escape_controls(text), style=style or ""), highlight=False)
+
+        def titles(ids: list[str]) -> str:
+            return ", ".join(item(i).title(ctx.texts) for i in ids)
+
+        def folder(slug: str | None) -> str:
+            return str(Path(self.sources_dir) / slug) if slug else self.sources_dir
+
+        if self.cancelled:
+            say(ctx.msg("add_information.cancelled"), "yellow")
+        else:
+            say(ctx.msg("add_information.summary.title"), "bold")
+            if self.changed:
+                say(ctx.msg("add_information.summary.changed", items=titles(self.changed)))
+            else:
+                say(ctx.msg("add_information.summary.unchanged"))
+            if self.missing:
+                say(ctx.msg("add_information.summary.missing", items=titles(self.missing)))
+            else:
+                say(ctx.msg("add_information.summary.complete"))
+            if self.conflicts:
+                say(ctx.msg("add_information.summary.conflicts"), "yellow")
+                for c in self.conflicts:
+                    line = ctx.msg(
+                        "add_information.summary.conflict",
+                        title=item(c.item_id).title(ctx.texts),
+                        current=" ".join(c.current.split()),
+                        proposed=" ".join(c.proposed.split()),
+                        origin=c.origin,
+                    )
+                    say(f"- {line}", "yellow")
+        say("")
+        say(ctx.msg("add_information.summary.sources"), "bold")
+        if not self.sources:
+            say(ctx.msg("add_information.summary.no_sources"))
+        styles = {"added": None, "skipped_duplicate": "dim"}
+        for s in self.sources:
+            line = ctx.msg(
+                f"add_information.source.{s.status}",
+                origin=s.origin,
+                path=folder(s.slug),
+                id=s.quarantine_id or "",
+                reason=s.reason or "",
+            )
+            say(f"- {line}", styles.get(s.status, "yellow"))
+        if self.notes:
+            say("")
+            say(ctx.msg("add_information.summary.notes"), "bold")
+            for note in self.notes:
+                say(f"- {note.text}", "yellow")
+        filter_failed = any(n.kind == "model_error_filter" for n in self.notes)
+        if not self.cancelled and not filter_failed:  # a failure is explained in the notes
+            say("")
+            key = "filter_written" if self.filter_written else "filter_kept"
+            say(ctx.msg(f"add_information.summary.{key}"))
+        say("")
+        say(ctx.msg("add_information.summary.files"), "bold")
+        say(f"- {ctx.msg('add_information.file.profile')}: {self.profile_path}")
+        for path in self.source_dirs:
+            say(f"- {ctx.msg('add_information.file.source')}: {path}")
+        say(f"- {ctx.msg('add_information.file.manifest')}: {self.manifest_path}")
+        say(f"- {ctx.msg('add_information.file.filter')}: {self.filter_path}")

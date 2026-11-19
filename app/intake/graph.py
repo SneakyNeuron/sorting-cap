@@ -1,7 +1,7 @@
 """The intake round as a LangGraph `StateGraph` (R9, R10, R13, T8, T10).
 
-    start → ask_sources* → ingest → intro → ask* → merge → write
-    start → ingest → merge → write                       (headless)
+    start → ask_sources* → ingest → intro → ask* → write → filter
+    start → ingest → write → filter                      (headless)
 
 `start` reads `profile.md` and picks up dropped-in files (R11). `ask_sources` collects
 paths and URLs one per line (empty line to continue); `ingest` copies them and extracts
@@ -14,7 +14,9 @@ question, `done` ends the round at once (localized words, R9).
 Nothing is written to `profile.md` before `write`: a cancelled round (Ctrl-C / Ctrl-D)
 leaves it as it was, and sources copied so far stay with `extracted` false, so the next
 round extracts them. `write` merges (answers replace, sources and the introduction fill,
-R13), saves `profile.md` and only then marks the extracted sources.
+R13), saves `profile.md` and only then marks the extracted sources. `filter`
+regenerates `listing_filter_file.md` when the profile changed or the file is missing
+(R14, T9); on a model error the previous file is kept and the summary notes it.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from app.intake.checklist import CV_ITEM, ITEMS, item
 from app.intake.extract import CHAR_BUDGET, extract, to_updates
+from app.intake.filter_file import generate, needs_filter, stored_texts, write_filter
 from app.intake.profile import (
     cv_body,
     load_profile,
@@ -304,6 +307,34 @@ def build_graph(
         )
         return {"result": result.model_dump(mode="json")}
 
+    def filter_node(state: RoundState) -> dict[str, Any]:
+        result = RoundResult.model_validate(state["result"])
+        if not needs_filter(ctx.workspace, profile_changed=result.profile_changed):
+            return {}
+        sources = stored_texts(ctx.workspace, load_manifest(ctx.workspace))
+        outcome = generate(model, texts, ctx.workspace, sources=sources)
+        if outcome.truncated:
+            origin = ctx.msg("intake.origin.filter_sources")
+            result.notes.append(
+                RoundNote(
+                    kind="truncated",
+                    subject=origin,
+                    text=ctx.msg("intake.note.truncated", origin=origin, limit=CHAR_BUDGET),
+                )
+            )
+        if outcome.filter is None:
+            result.notes.append(
+                RoundNote(
+                    kind="model_error_filter",
+                    subject=ctx.msg("intake.origin.filter_sources"),
+                    text=ctx.msg("intake.note.model_error_filter", detail=outcome.error),
+                )
+            )
+        else:
+            write_filter(ctx.workspace, outcome.filter, texts)
+            result.filter_written = True
+        return {"result": result.model_dump(mode="json")}
+
     # --- edges -------------------------------------------------------------------
 
     def after_start(state: RoundState) -> str:
@@ -329,6 +360,7 @@ def build_graph(
         ("intro", intro),
         ("ask", ask),
         ("write", write),
+        ("filter", filter_node),
     ):
         graph.add_node(name, node)
     graph.add_edge(START, "start")
@@ -337,7 +369,8 @@ def build_graph(
     graph.add_conditional_edges("ingest", after_ingest, ["intro", "write"])
     graph.add_conditional_edges("intro", after_intro, ["ask", "write"])
     graph.add_conditional_edges("ask", after_ask, ["ask", "write"])
-    graph.add_edge("write", END)
+    graph.add_edge("write", "filter")
+    graph.add_edge("filter", END)
     return graph.compile(checkpointer=InMemorySaver())
 
 

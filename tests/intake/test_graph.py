@@ -30,6 +30,13 @@ def value(text: str, relation=None) -> ExtractedValue:
     return ExtractedValue(text=text, relation=relation)
 
 
+@pytest.fixture(autouse=True)
+def no_filter(monkeypatch):
+    """These tests are about the dialog and extraction; the filter node has its own
+    tests (`test_filter_file.py`), so here it never calls the model."""
+    monkeypatch.setattr("app.intake.graph.needs_filter", lambda *_a, **_k: False)
+
+
 @pytest.fixture
 def cwd(tmp_path) -> Path:
     path = tmp_path / "input"

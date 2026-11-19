@@ -150,3 +150,41 @@ def test_same_input_from_cli_and_chat_line():
     cli = parse_command(reg, t, ["settings", "--model", "m"])
     chat = parse_command(reg, t, split_chat_line("-settings --model m"))
     assert cli == chat
+
+
+class ListInput(ToolInput):
+    source: list[str] = Field(default_factory=list)
+    name: str = "x"
+
+
+def _list_registry():
+    reg = Registry()
+    reg.register(
+        Tool(
+            "lister",
+            ListInput,
+            DemoOutput,
+            lambda ctx, i: DemoOutput(echo=i.model_dump(mode="json")),
+        )
+    )
+    return reg
+
+
+def test_list_fields_are_repeatable_flags(lenient_texts):
+    reg = _list_registry()
+    t = Texts("en")
+    _, inputs = parse_command(reg, t, ["lister"])
+    assert inputs.source == []
+    _, inputs = parse_command(reg, t, ["lister", "--source", "a.txt"])
+    assert inputs.source == ["a.txt"]
+    cli = parse_command(reg, t, ["lister", "--source", "a b.txt", "--source", "https://x.example/"])
+    chat = parse_command(
+        reg, t, split_chat_line('-lister --source "a b.txt" --source https://x.example/')
+    )
+    assert cli == chat
+    assert cli[1].source == ["a b.txt", "https://x.example/"]
+
+
+def test_list_field_flag_takes_a_value(lenient_texts):
+    with pytest.raises(ParseError):
+        parse_command(_list_registry(), Texts("en"), ["lister", "--source"])
