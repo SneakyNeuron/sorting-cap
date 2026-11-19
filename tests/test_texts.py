@@ -4,20 +4,62 @@ import pytest
 
 from app import texts as texts_mod
 from app.paths import PROMPTS_DIR, TEXTS_DIR
-from app.texts import LANGUAGES, Texts, TextsError, message_keys, prompt_files
-
-
-def _files(root):
-    return sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file())
+from app.texts import (
+    LANGUAGES,
+    Texts,
+    TextsError,
+    is_editor_artifact,
+    listed_files,
+    message_keys,
+    prompt_files,
+)
 
 
 def test_languages_have_same_prompt_files():
-    assert _files(PROMPTS_DIR / "cs") == _files(PROMPTS_DIR / "en")
+    assert listed_files(PROMPTS_DIR / "cs") == listed_files(PROMPTS_DIR / "en")
 
 
 def test_languages_have_same_text_files_and_keys():
-    assert _files(TEXTS_DIR / "cs") == _files(TEXTS_DIR / "en")
+    assert listed_files(TEXTS_DIR / "cs") == listed_files(TEXTS_DIR / "en")
     assert message_keys("cs") == message_keys("en")
+
+
+EDITOR_ARTIFACTS = (
+    "chat/.system.md.swp",
+    "chat/.system.md.swo",
+    "chat/system.md~",
+    "chat/.hidden.md",
+    ".DS_Store",
+    ".cache/notes.md",
+)
+
+
+@pytest.mark.parametrize("name", EDITOR_ARTIFACTS)
+def test_editor_artifacts_recognised(name):
+    from pathlib import PurePosixPath
+
+    assert is_editor_artifact(PurePosixPath(name))
+
+
+@pytest.mark.parametrize("name", ["chat/system.md", "intake/extract.md", "messages.json"])
+def test_real_files_not_artifacts(name):
+    from pathlib import PurePosixPath
+
+    assert not is_editor_artifact(PurePosixPath(name))
+
+
+def test_parity_ignores_editor_artifacts(tmp_path):
+    """Swap, backup and dot files in one language do not break cs/en parity."""
+    for lang in LANGUAGES:
+        (tmp_path / lang / "chat").mkdir(parents=True)
+        (tmp_path / lang / "chat" / "system.md").write_text("x")
+    for name in EDITOR_ARTIFACTS:
+        path = tmp_path / "cs" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\x00swap")
+    assert listed_files(tmp_path / "cs") == listed_files(tmp_path / "en")
+    assert [str(p) for p in listed_files(tmp_path / "en")] == ["chat/system.md"]
+    assert [str(p) for p in prompt_files(tmp_path)] == ["cs/chat/system.md", "en/chat/system.md"]
 
 
 def test_messages_are_non_empty_and_formattable():

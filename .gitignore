@@ -14,3 +14,9 @@ htmlcov/
 
 # Secrets
 .env
+
+# Editor swap and backup files
+*.swp
+*.swo
+*~
+.*.sw?

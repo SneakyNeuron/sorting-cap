@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Literal, get_args
 
 from app.paths import PROMPTS_DIR, TEXTS_DIR, WORKSPACE_NOTES_DIR
@@ -52,9 +52,25 @@ def has_message(language: str, key: str, texts_dir: Path = TEXTS_DIR) -> bool:
     return key in _catalog(_check_language(language), texts_dir)
 
 
+# Editor swap and backup files (vim `.x.swp`/`.x.swo`, emacs/vim `x~`); dot files and
+# dot directories are skipped as a whole.
+_ARTIFACT_SUFFIXES = (".swp", ".swo", "~")
+
+
+def is_editor_artifact(rel: PurePath) -> bool:
+    """True for a dot file, a file in a dot directory, or an editor swap/backup file."""
+    return any(part.startswith(".") for part in rel.parts) or rel.name.endswith(_ARTIFACT_SUFFIXES)
+
+
+def listed_files(root: Path, pattern: str = "*") -> list[Path]:
+    """Files under `root` matching `pattern`, relative to `root`, without editor artifacts."""
+    found = (p.relative_to(root) for p in root.rglob(pattern) if p.is_file())
+    return sorted(rel for rel in found if not is_editor_artifact(rel))
+
+
 def prompt_files(prompts_dir: Path = PROMPTS_DIR) -> list[Path]:
     """Every prompt file, as paths relative to the prompts directory."""
-    return sorted(p.relative_to(prompts_dir) for p in prompts_dir.rglob("*.md"))
+    return listed_files(prompts_dir, "*.md")
 
 
 def workspace_note(name: str, notes_dir: Path = WORKSPACE_NOTES_DIR) -> str:

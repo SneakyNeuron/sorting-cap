@@ -16,7 +16,7 @@
 - [x] V13 (R18): workspace tests show `README.md` and `AGENTS.md` written on creation, added when missing, and never overwritten (`uv run pytest tests/test_workspace.py`).
 - [x] V14 (R19, T2): message and prompt parity between cs and en; `prompts/{cs,en}/intake/extract.md`, `filter/generate.md` and `structured/retry.md` reachable only through `app/texts.py`; the tour and system prompt mention `/add-information` and `/show-profile`; new tool schemas live in `app/schemas/` (`uv run pytest tests/test_texts.py tests/test_architecture.py tests/tools/test_registry.py`).
 - [x] V15 (T12): `uv run pytest` (no marker) collects no `live` test and runs offline with sockets disabled; `uv run ruff check` and `uv run ruff format --check` are clean; CI is green on the branch.
-- [ ] V16 (T12, R3): `uv run pytest -m live` runs the real classifier on the Czech and English sample sets and prints precision and recall per language (opt-in; not required to pass, results noted in the PR).
+- [ ] V16 (T12, R3): `uv run pytest -m live` runs the real classifier on the Czech and English sample sets and prints precision and recall per language (opt-in; not required to pass, results noted in the PR). — skipped: classifier not installed; developer merged without running it
 - [x] V17 (T13): `grep -n "listing_filter_file" specs/mission.md specs/tech-stack.md` shows the filter file described as generated only and changed through `/add-information`; `grep -nE "deberta|onnxruntime|Fernet|langgraph|llama-index|cryptography" specs/tech-stack.md` shows the chosen classifier and runtime, quarantine encryption at rest and the new dependencies.
 - [x] V18 (R20): REPL tests show `/name` runs the command and `-name` goes to the agent as free text; an unknown `/x` prints the localized error with a "did you mean" suggestion in cs and en and reaches no agent; `/help` prints one line per command truncated with an ellipsis at 40 columns in cs and en, `/help <command>` unchanged; the completer offers commands with descriptions for `/` and `/sh`, nothing for free text or no match, a command's flags with already-given non-repeatable flags left out, and command names after `/help `; the ghost text is the rest of the top match; Tab and → accept the highlighted command, ↓ then Enter runs the second match, Esc closes the menu and Enter without a menu submits the line (`uv run pytest tests/test_repl.py tests/tools/test_help.py tests/tools/test_registry.py`); `grep` finds no `-command`-style chat command in docs, texts, prompts or code.
 
@@ -24,9 +24,9 @@
 - (none requested; the developer chose offline tests and the opt-in live guard eval only)
 
 ## Understanding (cognitive debt)
-- [ ] U1: Trace a URL source from `/add-information` through `guard.check()` to either `profile/sources/<slug>/` or `quarantine/<id>/`, and name the single place where a clean verdict is required before text extraction.
-- [ ] U2: Read the merge rule in `app/intake/profile.py` and its tests, and explain which input can overwrite a non-empty item and which only fills empty ones.
-- [ ] U3: Read the quarantine store and explain where the key lives, what an agent reading the workspace could and could not see, and what release changes on disk.
+- [ ] U1: Trace a URL source from `/add-information` through `guard.check()` to either `profile/sources/<slug>/` or `quarantine/<id>/`, and name the single place where a clean verdict is required before text extraction. — skipped: developer merged before doing it
+- [ ] U2: Read the merge rule in `app/intake/profile.py` and its tests, and explain which input can overwrite a non-empty item and which only fills empty ones. — skipped: developer merged before doing it
+- [ ] U3: Read the quarantine store and explain where the key lives, what an agent reading the workspace could and could not see, and what release changes on disk. — skipped: developer merged before doing it
 
 ## Definition of done
 All boxes above are ticked, the deep review findings are resolved or consciously accepted, specs match the code, and the roadmap phase is marked complete.
