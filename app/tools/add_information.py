@@ -1,4 +1,4 @@
-"""`-add-information` (not agent-callable): one intake round and its summary (R9, R15, R16).
+"""`/add-information` (not agent-callable): one intake round and its summary (R9, R15, R16).
 
 In chat without `--source` it runs the dialog graph (sources, introduction,
 questions). With `--source` (repeatable), and always in the headless runner, it runs

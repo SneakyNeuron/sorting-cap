@@ -9,7 +9,7 @@ The Fernet key is `SORTINGCAP_QUARANTINE_KEY`, read through `app.credentials`
 on a `create` only while no item still holds a `content.enc`, never by listing or
 decrypting. If the key is missing while such items exist, `create` raises
 `QuarantineKeyLost` and writes nothing, so items are never encrypted under two
-different keys. It is not one of `credentials.KNOWN_KEYS`, so `-settings` never
+different keys. It is not one of `credentials.KNOWN_KEYS`, so `/settings` never
 shows it.
 
 Listing needs no key (reports are plaintext). Decrypting without the key, with a

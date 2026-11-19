@@ -27,7 +27,7 @@ __all__ = ["ChatAgent", "ModelFactory", "NoModelConfigured", "Reply", "default_m
 
 
 class NoModelConfigured(Exception):
-    """No provider and model yet: the user must run `-setup` first."""
+    """No provider and model yet: the user must run `/setup` first."""
 
 
 @dataclass(frozen=True)

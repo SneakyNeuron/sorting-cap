@@ -1,10 +1,10 @@
-"""`-help`: list commands, or show one command's arguments."""
+"""`/help`: list commands, or show one command's arguments."""
 
 from __future__ import annotations
 
 from app.schemas.help import ArgInfo, CommandDetail, CommandInfo, HelpInput, HelpOutput
 from app.tools.context import ToolContext, ToolError
-from app.tools.registry import BUILTINS, Tool, field_specs
+from app.tools.registry import BUILTINS, COMMAND_PREFIX, Tool, field_specs, unknown_command
 
 
 def _builtin_description(ctx: ToolContext, name: str) -> str:
@@ -14,7 +14,7 @@ def _builtin_description(ctx: ToolContext, name: str) -> str:
 def handle(ctx: ToolContext, inputs: HelpInput) -> HelpOutput:
     registry = ctx.registry
     if inputs.command:
-        name = inputs.command.lstrip("-")
+        name = inputs.command.removeprefix(COMMAND_PREFIX)
         if name in BUILTINS:
             return HelpOutput(
                 command=CommandDetail(
@@ -23,7 +23,7 @@ def handle(ctx: ToolContext, inputs: HelpInput) -> HelpOutput:
             )
         tool = registry.get(name)
         if tool is None:
-            raise ToolError(ctx.msg("parse.unknown_command", name=name))
+            raise ToolError(unknown_command(registry, ctx.texts, name).message)
         args = [
             ArgInfo(
                 name=spec.name if spec.positional else spec.flag,

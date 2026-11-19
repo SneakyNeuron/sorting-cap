@@ -1,4 +1,4 @@
-"""The profile model (`profile.md`, R13, T7), the merge result and `-show-profile` (R17)."""
+"""The profile model (`profile.md`, R13, T7), the merge result and `/show-profile` (R17)."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ class MergeResult(BaseModel):
     conflicts: list[Conflict] = Field(default_factory=list)
 
 
-# --- `-show-profile` -----------------------------------------------------------------
+# --- `/show-profile` -----------------------------------------------------------------
 
 
 class ShowProfileInput(ToolInput):
@@ -130,7 +130,7 @@ class SourceView(BaseModel):
 
 
 class ShowProfileOutput(ToolOutput):
-    """What `-show-profile` read from `profile.md`, `manifest.json` and the filter file.
+    """What `/show-profile` read from `profile.md`, `manifest.json` and the filter file.
 
     `filter_text` is `None` while `listing_filter_file.md` does not exist;
     `manifest_error` is the localized reason when `manifest.json` cannot be read.

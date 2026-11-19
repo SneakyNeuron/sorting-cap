@@ -1,4 +1,4 @@
-"""`-setup` (user-only, chat-only): language, hardware, a provider selection loop, and
+"""`/setup` (user-only, chat-only): language, hardware, a provider selection loop, and
 after a verified provider the classifier download offer (declinable).
 
 The chosen provider runs its setup and verification; on failure or a declined

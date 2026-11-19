@@ -170,7 +170,7 @@ def test_novita_key_never_in_settings_logs_or_history(workspace, monkeypatch):
     save_settings(workspace, Settings(language="en"))
     con, buf = console()
     secret = "nv-super-secret-0042"
-    keys = "-setup\r\r1\ry\r" + secret + "\r1\r-settings\r-exit\r"
+    keys = "/setup\r\r1\ry\r" + secret + "\r1\r/settings\r/exit\r"
     with create_pipe_input() as inp, create_app_session(input=inp, output=DummyOutput()):
         repl = Repl(
             workspace,

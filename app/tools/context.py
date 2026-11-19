@@ -55,7 +55,7 @@ class Choice:
 
 
 def language_choices() -> list[Choice]:
-    """The language step's choices (first start and `-setup`), from `texts.LANGUAGES`."""
+    """The language step's choices (first start and `/setup`), from `texts.LANGUAGES`."""
     return [Choice(lang, LANGUAGE_NAMES[lang]) for lang in LANGUAGES]
 
 
@@ -181,7 +181,7 @@ class ToolContext:
     # builds the chat model for tools that call the LLM (intake, extraction); tests inject fakes
     model_factory: ModelFactory = default_model_factory
     settings: Settings = field(init=False)
-    # keys typed during `-setup`, used for verification, written to `.env` only after it
+    # keys typed during `/setup`, used for verification, written to `.env` only after it
     pending_keys: dict[str, str] = field(default_factory=dict, init=False, repr=False)
     # the classifier download was offered in this command run and declined or failed
     # (R8): offered once

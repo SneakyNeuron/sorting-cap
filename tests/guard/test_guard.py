@@ -136,7 +136,7 @@ def test_missing_classifier_refuses_even_a_rule_hit_headless(workspace):
     ctx.prompter = HeadlessPrompter(lambda: ctx.texts, yes=True)
     with pytest.raises(GuardUnavailable) as exc:
         check(ctx, INJECTION, "https://example.com/c")
-    assert "-setup" in exc.value.text(ctx.texts)
+    assert "/setup" in exc.value.text(ctx.texts)
     assert items(workspace) == []  # not quarantined, not stored
 
 

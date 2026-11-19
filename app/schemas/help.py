@@ -32,10 +32,11 @@ class HelpOutput(ToolOutput):
     def render(self, ctx) -> None:
         from rich.markup import escape
         from rich.table import Table
+        from rich.text import Text
 
         if self.command is not None:
             ctx.console.print(
-                f"[bold]-{escape(self.command.name)}[/bold]  {escape(self.command.description)}"
+                f"[bold]/{escape(self.command.name)}[/bold]  {escape(self.command.description)}"
             )
             if not self.command.args:
                 ctx.console.print(ctx.texts.message("help.no_args"), markup=False)
@@ -46,8 +47,13 @@ class HelpOutput(ToolOutput):
                 table.add_row(f"[cyan]{escape(arg.name)}[/cyan]", escape(arg.help) + extra)
             ctx.console.print(table)
             return
-        table = Table(show_header=False, box=None, padding=(0, 2))
-        for cmd in self.commands:
-            table.add_row(f"[cyan]-{escape(cmd.name)}[/cyan]", escape(cmd.description))
-        ctx.console.print(table)
+        # One line per command: `/name`, then its description cut with "…" to the width.
+        names = [f"/{cmd.name}" for cmd in self.commands]
+        column = max(map(len, names), default=0) + 2
+        for name, cmd in zip(names, self.commands, strict=True):
+            line = Text()
+            line.append(name, style="cyan")
+            line.append(" " * (column - len(name)) + (cmd.description.splitlines() or [""])[0])
+            line.truncate(ctx.console.width, overflow="ellipsis")
+            ctx.console.print(line, no_wrap=True, overflow="ellipsis")
         ctx.console.print(ctx.texts.message("help.footer"), style="dim", markup=False)

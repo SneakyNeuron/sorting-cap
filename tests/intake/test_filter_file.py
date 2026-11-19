@@ -78,7 +78,7 @@ def test_render_has_header_and_every_section(language):
 
 def test_header_says_generated_and_how_to_change():
     for language in ("cs", "en"):
-        assert "-add-information" in Texts(language).message("filter.header")
+        assert "/add-information" in Texts(language).message("filter.header")
 
 
 def test_render_keeps_each_criterion_on_one_line():

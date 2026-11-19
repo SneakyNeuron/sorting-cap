@@ -23,8 +23,8 @@ Sorting Cap covers guided setup of a local LLM (Ollama); profile building from c
 ## Tone & principles
 - Voice: short, dry, a bit hat-like. Czech by default, English available.
 - Local and private by default: the user's data stays on their machine; a remote LLM provider is opt-in.
-- Files are the source of truth: profile, company and job folders, letters and letter skills are plain Markdown/JSON the user may edit by hand, and the app picks up those edits. The exception is `listing_filter_file.md`: it is plain Markdown the user can read, but it is generated only, overwritten on each regeneration and changed through `-add-information`.
-- One tool registry: dash-commands in chat, agent tool calls and cron all trigger the same headless jobs; chat only starts them and shows the result.
+- Files are the source of truth: profile, company and job folders, letters and letter skills are plain Markdown/JSON the user may edit by hand, and the app picks up those edits. The exception is `listing_filter_file.md`: it is plain Markdown the user can read, but it is generated only, overwritten on each regeneration and changed through `/add-information`.
+- One tool registry: slash commands in chat, agent tool calls and cron all trigger the same headless jobs; chat only starts them and shows the result.
 - Untrusted by default: all web input is scanned and, if suspicious, quarantined (encrypted) before anything else touches it; only the user can release it.
 - Prompts and output schemas are data, not code: every prompt lives in one prompt directory tree and every LLM output format is a Pydantic model.
 - The user decides: the cap proposes, the user approves; nothing is sent or applied for automatically.

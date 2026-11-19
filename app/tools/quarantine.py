@@ -1,9 +1,9 @@
-"""`-show-quarantine [<id>]` and `-release-quarantine <id>` (chat-only, user-only; R6, R7).
+"""`/show-quarantine [<id>]` and `/release-quarantine <id>` (chat-only, user-only; R6, R7).
 
-`-show-quarantine` lists items, or decrypts one in memory and prints it through
+`/show-quarantine` lists items, or decrypts one in memory and prints it through
 `render`; the text is never written to disk, the REPL history or any agent history.
 
-`-release-quarantine` shows the item the same way, asks (default no) and on yes
+`/release-quarantine` shows the item the same way, asks (default no) and on yes
 ingests the decrypted bytes as a profile source without guarding them again, then
 marks the report `released` and deletes `content.enc`. It refuses to run under the
 headless prompter even when the runner did not stop it first, so a `--yes` can never

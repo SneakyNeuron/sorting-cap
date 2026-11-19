@@ -1,4 +1,4 @@
-"""`-tour`: the app overview and tour."""
+"""`/tour`: the app overview and tour."""
 
 from __future__ import annotations
 

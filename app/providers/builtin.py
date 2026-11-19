@@ -1,4 +1,4 @@
-"""Registers the Phase 1 providers. Order is the order of `-setup`'s menu."""
+"""Registers the Phase 1 providers. Order is the order of `/setup`'s menu."""
 
 from app.providers.base import register_provider
 from app.providers.novita import NovitaProvider

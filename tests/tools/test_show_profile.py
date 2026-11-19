@@ -1,4 +1,4 @@
-"""`-show-profile` (R17, T11)."""
+"""`/show-profile` (R17, T11)."""
 
 from __future__ import annotations
 

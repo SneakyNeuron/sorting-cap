@@ -1,4 +1,4 @@
-"""`-show-quarantine` and `-release-quarantine` input and output (R6, R7)."""
+"""`/show-quarantine` and `/release-quarantine` input and output (R6, R7)."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 """Intake: the extraction output (T8), the round's graph state and result, and
-`-add-information` (R9, R15, R16, T10)."""
+`/add-information` (R9, R15, R16, T10)."""
 
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ class RoundResult(BaseModel):
     filter_written: bool = False
 
 
-# --- `-add-information` (R9, R15, R16) -------------------------------------------------
+# --- `/add-information` (R9, R15, R16) -------------------------------------------------
 
 
 class AddInformationInput(ToolInput):

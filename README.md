@@ -26,9 +26,9 @@ uv run sortingcap            # start the chat
 uv run sortingcap --version
 ```
 
-On the very first start the cap asks for the language (cs/en). Then type `-setup`.
+On the very first start the cap asks for the language (cs/en). Then type `/setup`.
 
-## `-setup`
+## `/setup`
 
 A guided loop, all in the chat:
 
@@ -40,30 +40,32 @@ A guided loop, all in the chat:
    - **Custom OpenAI-compatible endpoint** — any URL including its version path, e.g. `http://localhost:1234/v1` for LM Studio, vLLM or llama.cpp; optional key; model name. A `localhost`/`127.x`/`::1` URL counts as local.
 
    Remote providers are never preselected and always show that your prompts and data leave the machine. This includes Ollama when `ollama_base_url` points at another host; such a URL that does not answer as Ollama sends you back to the menu, and nothing is installed or started for it. A remote `http://` URL also gets a warning that prompts and any key travel unencrypted. If your hardware is too small for any local model, the local option is shown as unavailable and you can use Novita or another provider instead.
-4. Verification: one chat reply and one tool call. On failure, or if you decline a step, you are back in the menu with the reason. A key typed during `-setup` is written to `<workspace>/.env` only after verification succeeds, so a mistyped key never replaces a working one; when the key's environment variable is set, it wins and `-setup` does not ask for one.
+4. Verification: one chat reply and one tool call. On failure, or if you decline a step, you are back in the menu with the reason. A key typed during `/setup` is written to `<workspace>/.env` only after verification succeeds, so a mistyped key never replaces a working one; when the key's environment variable is set, it wins and `/setup` does not ask for one.
 5. Injection classifier: after a successful verification the cap offers to download the local prompt-injection classifier (about 0.7 GB, see [The guard](#the-guard)). Saying no keeps setup successful; the offer comes back in chat the first time a URL or `.html` file needs it.
 
 After the first successful setup the app tour is shown once.
 
 ## Commands
 
-Type them in the chat; anything that does not start with `-` goes to the cap.
+Type them in the chat; anything that does not start with `/` goes to the cap. A `/word` that is not a command is not sent to the cap: you get an error, with a suggestion when a command name is close. Argument flags keep two dashes (`--source`, `--json`, …).
 
 | Command | What it does |
 |---|---|
-| `-help [command]` | List commands, or one command's options |
-| `-tour` | App overview and tour |
-| `-settings [--language cs\|en] [--provider …] [--model …] [--ollama-base-url …] [--openai-base-url …] [--guard-threshold …]` | Show or change settings (keys are shown masked). Switching to a remote provider asks for confirmation; changing `--provider` without `--model` clears the model. `--guard-threshold` (between 0 and 1, default 0.5) is the classifier score at which web content is quarantined |
-| `-setup` | Guided setup (chat only) |
-| `-add-information [--source <path\|url> …]` | Tell the cap about yourself: sources, an introduction and questions for what is missing; updates the profile and the filter file. With `--source` (repeatable) no questions are asked |
-| `-show-profile` | Your profile items (missing ones marked), sources (CV flagged), the filter file and where each file lives |
-| `-show-quarantine [<id>]` | List quarantined content, or decrypt one item and print it as plain text (chat only) |
-| `-release-quarantine <id>` | Show one quarantined item and, after your explicit yes, add it as a source (chat only) |
-| `-exit` | Quit (also Ctrl-D). Ctrl-C cancels the current line or running command |
+| `/help [command]` | List commands, or one command's options |
+| `/tour` | App overview and tour |
+| `/settings [--language cs\|en] [--provider …] [--model …] [--ollama-base-url …] [--openai-base-url …] [--guard-threshold …]` | Show or change settings (keys are shown masked). Switching to a remote provider asks for confirmation; changing `--provider` without `--model` clears the model. `--guard-threshold` (between 0 and 1, default 0.5) is the classifier score at which web content is quarantined |
+| `/setup` | Guided setup (chat only) |
+| `/add-information [--source <path\|url> …]` | Tell the cap about yourself: sources, an introduction and questions for what is missing; updates the profile and the filter file. With `--source` (repeatable) no questions are asked |
+| `/show-profile` | Your profile items (missing ones marked), sources (CV flagged), the filter file and where each file lives |
+| `/show-quarantine [<id>]` | List quarantined content, or decrypt one item and print it as plain text (chat only) |
+| `/release-quarantine <id>` | Show one quarantined item and, after your explicit yes, add it as a source (chat only) |
+| `/exit` | Quit (also Ctrl-D). Ctrl-C cancels the current line or running command |
 
-Tab completes command names. The cap itself can only call `-help`, `-tour` and `-show-profile`; it can never run `-setup`, change settings, add information or touch the quarantine.
+Typing `/` opens a menu of commands with their descriptions, like Claude Code's slash-command menu; it filters as you type, and the top match is also shown as grey ghost text. ↑/↓ move the highlight, Tab (or → at the end of the line) takes the highlighted command, Enter runs it, Esc closes the menu. After a command and a space the same menu offers its flags (flags you already gave are left out unless they repeat); `/help <partial>` completes command names. Free text gets no menu. `/help` lists every command on one line, shortened to the terminal width.
 
-## `-add-information`
+The cap itself can only call `/help`, `/tour` and `/show-profile`; it can never run `/setup`, change settings, add information or touch the quarantine.
+
+## `/add-information`
 
 In chat it runs one intake round:
 
@@ -80,7 +82,7 @@ uv run sortingcap run add-information --source ~/cv.pdf --source https://example
 uv run sortingcap run add-information          # only dropped-in files and unfinished sources
 ```
 
-`-add-information --source …` in chat does the same. Without a configured model it stops before copying anything, with a hint to run `-setup` (exit 1). Exit 1 also when a `--source` you named fails (not found, unreadable, unsupported, fetch error, empty text) or a URL / `.html` source is refused because the classifier is missing, and when the filter file could not be regenerated (a model error, or Ctrl-C during that step; `profile.md` is already saved); the other sources are still processed and the summary is printed. Errors on dropped-in files are only reported.
+`/add-information --source …` in chat does the same. Without a configured model it stops before copying anything, with a hint to run `/setup` (exit 1). Exit 1 also when a `--source` you named fails (not found, unreadable, unsupported, fetch error, empty text) or a URL / `.html` source is refused because the classifier is missing, and when the filter file could not be regenerated (a model error, or Ctrl-C during that step; `profile.md` is already saved); the other sources are still processed and the summary is printed. Errors on dropped-in files are only reported.
 
 ### Profile files
 
@@ -89,9 +91,9 @@ uv run sortingcap run add-information          # only dropped-in files and unfin
 | `profile/profile.md` | One `## <title> <!-- item:<id> -->` section per checklist item. Edit it by hand any time; the id comment is what the cap keys on, so keep it (the title may change). Sections without an id comment are kept verbatim. The CV section is written by the cap from the sources flagged as CV |
 | `profile/sources/<slug>/` | One folder per source: `original.<ext>` (for URLs the fetched `original.html` plus `source.url` with the final URL) and the extracted `text.md` |
 | `profile/sources/manifest.json` | Every source: origin, SHA-256, type, CV flag, whether it was extracted, time. Adding the same content again (even under another name) is skipped |
-| `listing_filter_file.md` | Generated from the profile and the source texts: what you are looking for, must-match and nice-to-match criteria, exclusions, keywords in Czech and English. **Generated only**: overwritten every time, change it through `-add-information`. A `<!-- profile-sha256: … -->` marker records the `profile.md` it was built from; it is regenerated when that hash differs (e.g. after a hand edit of `profile.md`), when it is missing or unreadable. A failed generation leaves the previous file in place |
+| `listing_filter_file.md` | Generated from the profile and the source texts: what you are looking for, must-match and nice-to-match criteria, exclusions, keywords in Czech and English. **Generated only**: overwritten every time, change it through `/add-information`. A `<!-- profile-sha256: … -->` marker records the `profile.md` it was built from; it is regenerated when that hash differs (e.g. after a hand edit of `profile.md`), when it is missing or unreadable. A failed generation leaves the previous file in place |
 
-Files you drop into `profile/sources/` yourself (any supported type) are picked up by the next `-add-information`, chat or headless. A source whose extraction did not finish (cancelled round, model error) is extracted again from its stored `text.md` next round, without fetching it again. Long texts are cut at 12 000 characters, and the summary says so.
+Files you drop into `profile/sources/` yourself (any supported type) are picked up by the next `/add-information`, chat or headless. A source whose extraction did not finish (cancelled round, model error) is extracted again from its stored `text.md` next round, without fetching it again. Long texts are cut at 12 000 characters, and the summary says so.
 
 The model's structured replies (extraction, filter file) are checked against a schema. Ollama models get schema-constrained output, OpenAI-compatible providers (Novita, custom endpoints) function calling. A reply that does not match is retried up to twice with the error fed back (`prompts/<lang>/structured/retry.md`); connection errors, timeouts and HTTP 429 are retried up to three attempts in total.
 
@@ -102,15 +104,15 @@ Everything from the web — URLs and `.html`/`.htm` files you supply — passes 
 - **Rules**: Czech and English patterns (ignore/forget/override instructions, persona overrides, chat-template markers, requests to reveal prompts or call tools), case- and diacritics-insensitive; text hidden in HTML (inline styles, `hidden`, `aria-hidden`, class and id rules in the page's own `<style>`, comments, `<noscript>`, `<template>`) when it reads as an instruction to an AI. Everything in `<head>` (`<title>`, `<meta content>`, comments), anything outside `<body>`, `<title>` anywhere and `alt`/`title` attribute values also count as hidden text. Hidden text alone is flagged only when one hidden piece (one hidden element, comment, `<head>` child, attribute value or piece outside `<body>`) addresses an AI and gives an order, so words in unrelated pieces do not add up and hidden menus or cookie banners pass. Zero-width characters and directional marks (U+200E, U+200F, U+061C) are flagged inside words; bidi embedding, override and isolate controls anywhere. External stylesheets are not evaluated.
 - **Limits**: local `.html`/`.htm` files above 5 MiB are refused (web pages have the same cap). Each redirect of a URL is checked: a redirect from a public host to a local or private address, or from `https` to `http`, is refused as a source error (the URL you type yourself may be local). The redirect check looks up the host separately from the connection, so DNS rebinding between the two lookups is not covered.
 - **Classifier**: [`protectai/deberta-v3-base-prompt-injection-v2`](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2) (Apache-2.0), its ONNX export run on CPU with `onnxruntime`, at a pinned revision with pinned SHA-256 checksums, stored in `<workspace>/models/prompt-guard/<revision>/`. Long texts are scored in overlapping windows and the highest score counts. The model is trained mostly on English, so for Czech the rules carry more of the load.
-- **Download**: about 0.7 GB from huggingface.co, only after your explicit yes — at the end of `-setup`, or in chat the first time a URL or `.html` needs it. Headless runs never download, even with `--yes`.
+- **Download**: about 0.7 GB from huggingface.co, only after your explicit yes — at the end of `/setup`, or in chat the first time a URL or `.html` needs it. Headless runs never download, even with `--yes`.
 - **Fail closed**: without a working classifier (missing, bad checksum, does not load) URLs and `.html` files are refused — not stored, not quarantined, not passed on. Rules alone never let web content through. `.txt`, `.md` and `.pdf` still work.
 
 ### Quarantine
 
-Flagged content goes to `<workspace>/quarantine/<id>/`: `content.enc` (the original bytes, encrypted with Fernet) and `report.json` (source, time, the matched rules or the score, SHA-256, status — never an excerpt). The key is generated on first use and stored as `SORTINGCAP_QUARANTINE_KEY` in `<workspace>/.env`; `-settings` never shows it. Nothing from flagged content reaches a model, an agent or a source file unless you release it.
+Flagged content goes to `<workspace>/quarantine/<id>/`: `content.enc` (the original bytes, encrypted with Fernet) and `report.json` (source, time, the matched rules or the score, SHA-256, status — never an excerpt). The key is generated on first use and stored as `SORTINGCAP_QUARANTINE_KEY` in `<workspace>/.env`; `/settings` never shows it. Nothing from flagged content reaches a model, an agent or a source file unless you release it.
 
-- `-show-quarantine` lists the items; `-show-quarantine <id>` decrypts one in memory and prints it as plain text, with control and bidi characters escaped. It is never written to disk or the chat history.
-- `-release-quarantine <id>` shows the report and text, asks (default no) and on yes adds the content as a source without checking it again, marks the report `released` and deletes `content.enc`.
+- `/show-quarantine` lists the items; `/show-quarantine <id>` decrypts one in memory and prints it as plain text, with control and bidi characters escaped. It is never written to disk or the chat history.
+- `/release-quarantine <id>` shows the report and text, asks (default no) and on yes adds the content as a source without checking it again, marks the report `released` and deletes `content.enc`.
 
 Both are chat only: the headless runner refuses them even with `--yes`, and the cap cannot call them. If you lose the key, the list still works but items cannot be read or released, and nothing new is quarantined until you restore the key or remove the old items; nothing is ever deleted for you.
 
@@ -143,8 +145,8 @@ Everything the cap keeps about you is in plain files in one directory, by defaul
 | `quarantine/` | Encrypted flagged content, see [Quarantine](#quarantine) |
 | `models/prompt-guard/` | The injection classifier, see [The guard](#the-guard) |
 | `.history` | Chat input history, mode 0600 (hidden key input is never stored) |
-| `logs/setup.log` | Every command `-setup` ran, with its exit code |
-| `logs/ollama-serve.log` | Output of an `ollama serve` started by `-setup` (it keeps running after the app exits) |
+| `logs/setup.log` | Every command `/setup` ran, with its exit code |
+| `logs/ollama-serve.log` | Output of an `ollama serve` started by `/setup` (it keeps running after the app exits) |
 
 LangSmith tracing is always off.
 
@@ -157,7 +159,7 @@ uv run pytest              # offline test suite; network sockets are disabled
 uv run pytest -m live      # opt-in: real classifier on Czech and English samples, precision and recall per language
 ```
 
-The live suite needs the classifier installed (`-setup`, last step) in your workspace, or `SORTINGCAP_LIVE_WORKSPACE` pointing at one that has it; otherwise it skips. It is not run by default or in CI and is not required to pass.
+The live suite needs the classifier installed (`/setup`, last step) in your workspace, or `SORTINGCAP_LIVE_WORKSPACE` pointing at one that has it; otherwise it skips. It is not run by default or in CI and is not required to pass.
 
 Design and decisions live in `specs/` (mission, tech stack, roadmap, and one folder per feature).
 

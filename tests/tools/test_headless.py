@@ -92,7 +92,7 @@ def test_chat_only_refused_with_exit_two(registry):
 def test_chat_only_refused_before_arguments_are_parsed(registry, extra):
     code, _, err = run(["chatty", *extra], registry)
     assert code == 2
-    assert "jen v chatu" in err and "-chatty" in err and "Špatné argumenty" not in err
+    assert "jen v chatu" in err and "/chatty" in err and "Špatné argumenty" not in err
 
 
 def test_runner_flags_anywhere_except_as_a_flag_value(registry):
@@ -106,7 +106,7 @@ def test_runner_flags_anywhere_except_as_a_flag_value(registry):
     for argv in (["stub", "--action", "--yes"], ["stub", "--act", "--yes"]):
         code, out, err = run(argv, registry)
         assert (code, out) == (2, ""), argv
-        assert "Špatné argumenty pro -stub" in err
+        assert "Špatné argumenty pro /stub" in err
 
 
 def test_markup_like_error_text_printed_literally(registry):
@@ -126,7 +126,7 @@ def test_setup_refused_headless(extra):
     out, err = io.StringIO(), io.StringIO()
     code = run_headless(["setup", *extra], stdout=out, stderr=err)
     assert code == 2
-    assert "-setup" in err.getvalue()
+    assert "/setup" in err.getvalue()
 
 
 class IncompleteOutput(ToolOutput):

@@ -117,8 +117,30 @@ def test_unknown_command():
 
 
 def test_split_chat_line():
-    assert split_chat_line("-help settings") == ["help", "settings"]
-    assert split_chat_line('-settings --model "a b"') == ["settings", "--model", "a b"]
+    assert split_chat_line("/help settings") == ["help", "settings"]
+    assert split_chat_line('/settings --model "a b"') == ["settings", "--model", "a b"]
+    assert split_chat_line("//x") == ["/x"]  # only one leading slash is the prefix
+    assert split_chat_line("-help") == ["-help"]  # the dash form is no command prefix
+
+
+@pytest.mark.parametrize(
+    ("lang", "typed", "expected"),
+    [
+        ("en", "setp", "Unknown command: /setp. Did you mean /setup? Try /help."),
+        ("cs", "setp", "Neznámý příkaz: /setp. Nemyslíš /setup? Zkus /help."),
+        ("en", "show-profil", "Did you mean /show-profile?"),
+        ("en", "exti", "Did you mean /exit?"),
+        ("en", "zzzzzz", "Unknown command: /zzzzzz. Try /help."),
+        ("cs", "zzzzzz", "Neznámý příkaz: /zzzzzz. Zkus /help."),
+    ],
+)
+def test_unknown_command_suggests_close_name(lang, typed, expected):
+    with pytest.raises(UnknownCommand) as exc:
+        parse_command(default_registry(), Texts(lang), [typed])
+    assert expected in exc.value.text()
+    assert exc.value.name == typed
+    if typed == "zzzzzz":
+        assert "/help?" not in exc.value.text() and "mean" not in exc.value.text()
 
 
 def test_every_tool_has_keys_in_both_languages():
@@ -148,7 +170,7 @@ def test_same_input_from_cli_and_chat_line():
     reg = default_registry()
     t = Texts("en")
     cli = parse_command(reg, t, ["settings", "--model", "m"])
-    chat = parse_command(reg, t, split_chat_line("-settings --model m"))
+    chat = parse_command(reg, t, split_chat_line("/settings --model m"))
     assert cli == chat
 
 
@@ -179,7 +201,7 @@ def test_list_fields_are_repeatable_flags(lenient_texts):
     assert inputs.source == ["a.txt"]
     cli = parse_command(reg, t, ["lister", "--source", "a b.txt", "--source", "https://x.example/"])
     chat = parse_command(
-        reg, t, split_chat_line('-lister --source "a b.txt" --source https://x.example/')
+        reg, t, split_chat_line('/lister --source "a b.txt" --source https://x.example/')
     )
     assert cli == chat
     assert cli[1].source == ["a b.txt", "https://x.example/"]

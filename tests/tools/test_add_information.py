@@ -1,4 +1,4 @@
-"""`-add-information`: dialog and headless rounds, the summary and errors (R10, R11, R15, R16)."""
+"""`/add-information`: dialog and headless rounds, the summary and errors (R10, R11, R15, R16)."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ def test_repeatable_source_parsed_in_chat_and_headless():
     argv = ["add-information", "--source", "a.txt", "--source", "https://x.example/me"]
     cli = parse_command(reg, EN, argv)
     chat = parse_command(
-        reg, EN, split_chat_line("-add-information --source a.txt --source https://x.example/me")
+        reg, EN, split_chat_line("/add-information --source a.txt --source https://x.example/me")
     )
     assert cli == chat
     assert cli[1] == AddInformationInput(source=["a.txt", "https://x.example/me"])
@@ -187,7 +187,7 @@ def test_headless_guarded_source_without_classifier(en, cwd):
     assert load_profile(en).body("target_roles") == "Backend developer"
     flat = " ".join(out.split())
     assert "refused: https://me.example/cv" in flat
-    assert "-setup" in flat
+    assert "/setup" in flat
     assert str(profile_path(en)) in flat  # the summary is still printed
 
 

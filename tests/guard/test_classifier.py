@@ -227,7 +227,7 @@ def test_corrupt_model_file_fails_closed_and_is_removed(workspace, blobs, fake_l
     with pytest.raises(GuardUnavailable) as exc:
         classifier.load(workspace)
     assert exc.value.key == "guard.classifier_corrupt"
-    assert "-setup" in exc.value.text()
+    assert "/setup" in exc.value.text()
     assert not (model_dir(workspace) / "onnx/model.onnx").exists()
     assert not is_installed(workspace)
     assert fake_load == []
@@ -326,7 +326,7 @@ def test_download_never_runs_headless_even_with_yes(workspace, blobs):
     with pytest.raises(GuardUnavailable) as exc:
         ensure_classifier(ctx)
     assert exc.value.key == "guard.classifier_missing"
-    assert "-setup" in exc.value.text(ctx.texts)
+    assert "/setup" in exc.value.text(ctx.texts)
     assert calls == [] and not model_dir(workspace).exists()
 
 
@@ -335,7 +335,7 @@ def test_headless_hint_names_setup_in_both_languages(workspace):
 
     for lang in ("cs", "en"):
         text = GuardUnavailable("guard.classifier_missing").text(Texts(lang))
-        assert "-setup" in text
+        assert "/setup" in text
 
 
 def test_no_download_without_a_yes(workspace, blobs):

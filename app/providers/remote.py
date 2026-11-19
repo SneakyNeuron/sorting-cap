@@ -37,7 +37,7 @@ def ask_key(
 ) -> str | None:
     """Hidden input (never in the REPL history), kept in `ctx.pending_keys`.
 
-    The key is not written yet: `-setup` saves it to `<workspace>/.env` (0600)
+    The key is not written yet: `/setup` saves it to `<workspace>/.env` (0600)
     only after verification succeeds, so a wrong key never replaces a working one.
     When the variable is set in the environment it wins anyway: no prompt, the
     user is told so. An empty answer keeps an existing key; for an optional key
@@ -77,7 +77,7 @@ def ask_key(
 
 
 def save_pending_keys(ctx: ToolContext) -> None:
-    """Write the keys typed during this `-setup` round to `.env`, then forget them."""
+    """Write the keys typed during this `/setup` round to `.env`, then forget them."""
     for name, value in list(ctx.pending_keys.items()):
         ctx.credentials.set(name, value)
         ctx.say("remote.key_saved", path=str(ctx.credentials.env_file))

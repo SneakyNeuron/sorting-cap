@@ -377,7 +377,7 @@ def ensure_classifier(ctx: ToolContext) -> Scorer:
 
     Missing in chat: the download is offered once per command run; a no, or a failed
     download, refuses this input and later ones in the same run. Missing headless:
-    refused with the hint to run `-setup` or add the source in chat.
+    refused with the hint to run `/setup` or add the source in chat.
     """
     if not is_installed(ctx.workspace):
         if ctx.is_headless:

@@ -1,6 +1,6 @@
 """The one tool registry and the argparse parser generated from it.
 
-The same parser serves `sortingcap run <command> ...` and dash-commands typed
+The same parser serves `sortingcap run <command> ...` and slash commands typed
 in chat, so CLI, cron and chat behave identically.
 """
 
@@ -23,6 +23,7 @@ from app.texts import LANGUAGES, Texts, has_message
 from app.tools.context import ToolContext, ToolError
 
 BUILTINS = ("exit",)
+COMMAND_PREFIX = "/"  # chat commands are `/name`; the headless runner takes bare names
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,18 @@ class UnknownCommand(ParseError):
     def __init__(self, message: str, name: str) -> None:
         super().__init__(message)
         self.name = name
+
+
+def unknown_command(registry: Registry, texts: Texts, name: str) -> UnknownCommand:
+    """The localized "unknown command /x" error, with a close command name when one exists."""
+    import difflib
+
+    close = difflib.get_close_matches(name, registry.command_names(), n=1)
+    if close:
+        message = texts.message("parse.unknown_command_suggest", name=name, suggestion=close[0])
+    else:
+        message = texts.message("parse.unknown_command", name=name)
+    return UnknownCommand(message, name)
 
 
 class _Parser(argparse.ArgumentParser):
@@ -186,7 +199,7 @@ def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tupl
     name = argv[0]
     tool = registry.get(name)
     if tool is None:
-        raise UnknownCommand(texts.message("parse.unknown_command", name=name), name)
+        raise unknown_command(registry, texts, name)
     parser = build_parser(registry, texts)
     try:
         namespace = parser.parse_args(list(argv))
@@ -205,17 +218,18 @@ def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tupl
 
 
 def split_chat_line(line: str) -> list[str]:
-    """`-help settings` → `["help", "settings"]` (shlex rules)."""
+    """`/help settings` → `["help", "settings"]` (shlex rules; one leading `/` removed)."""
     import shlex
 
     tokens = shlex.split(line)
-    if tokens and tokens[0].startswith("-"):
-        tokens[0] = tokens[0].lstrip("-")
+    if tokens and tokens[0].startswith(COMMAND_PREFIX):
+        tokens[0] = tokens[0].removeprefix(COMMAND_PREFIX)
     return tokens
 
 
 __all__ = [
     "BUILTINS",
+    "COMMAND_PREFIX",
     "ParseError",
     "Registry",
     "Tool",
@@ -225,4 +239,5 @@ __all__ = [
     "field_specs",
     "parse_command",
     "split_chat_line",
+    "unknown_command",
 ]

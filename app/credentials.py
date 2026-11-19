@@ -1,6 +1,6 @@
 """Remote API keys: environment first, then `<workspace>/.env` (mode 0600).
 
-During `-setup` a newly typed key is held in memory (`overrides`, ahead of the
+During `/setup` a newly typed key is held in memory (`overrides`, ahead of the
 file) until verification succeeds; only then is it written to `.env`.
 
 Keys are never written to `settings.json`, logs, output or the REPL history.

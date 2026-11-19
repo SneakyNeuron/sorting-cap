@@ -66,7 +66,7 @@ def _samples(lang: str) -> list[tuple[str, bool]]:
 def scorer(real_workspace):
     if not classifier.is_installed(real_workspace):
         pytest.skip(
-            f"classifier not installed in {real_workspace}; run -setup (last step) "
+            f"classifier not installed in {real_workspace}; run /setup (last step) "
             "or set SORTINGCAP_LIVE_WORKSPACE"
         )
     return classifier.load(real_workspace)

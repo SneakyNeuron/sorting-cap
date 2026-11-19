@@ -1,7 +1,7 @@
 """Opt-in live suite (T12): real models, no fakes. Run with `uv run pytest -m live`.
 
 The root conftest points `SORTINGCAP_WORKSPACE` and `HOME` at a temporary directory for
-every test, so the real workspace (where `-setup` installed the classifier) is resolved
+every test, so the real workspace (where `/setup` installed the classifier) is resolved
 here, at import time, before any test runs. `SORTINGCAP_LIVE_WORKSPACE` overrides it.
 """
 

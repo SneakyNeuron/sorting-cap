@@ -1,4 +1,4 @@
-"""`-show-profile` (agent-callable, headless allowed): the profile, sources and filter file (R17).
+"""`/show-profile` (agent-callable, headless allowed): the profile, sources and filter file (R17).
 
 It reads only `profile/profile.md`, `profile/sources/manifest.json` and
 `listing_filter_file.md` (shown without its internal `profile-sha256` marker); never a

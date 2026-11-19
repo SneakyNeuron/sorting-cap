@@ -59,7 +59,7 @@ def test_every_prompt_file_reachable():
 
 
 def test_format_values():
-    assert "-x" in Texts("en").message("parse.unknown_command", name="x")
+    assert "/x" in Texts("en").message("parse.unknown_command", name="x")
 
 
 def test_one_language_set_everywhere():
@@ -108,5 +108,5 @@ def test_dynamic_message_key_families_complete():
 def test_tour_and_system_prompt_mention_intake_commands(lang):
     texts = Texts(lang)
     for text in (texts.prewritten("tour"), texts.prompt("chat", "system")):
-        assert "-add-information" in text
-        assert "-show-profile" in text
+        assert "/add-information" in text
+        assert "/show-profile" in text
