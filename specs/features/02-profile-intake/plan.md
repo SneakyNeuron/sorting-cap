@@ -64,8 +64,8 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - [x] Fixes: shared structured-output helper `app/providers/structured.py` (`invoke_structured`: `json_schema` for Ollama, `function_calling` for DeepSeek; `include_raw=True` with up to 2 retries feeding the validation error back via `prompts/{cs,en}/structured/retry.md`; transient errors retried, 3 attempts, injectable sleep) used by extraction and filter generation (T8, T9); `Field(description=…)` on every field of `ExtractedValue`, `Extraction` and `FilterFile`; `<!-- profile-sha256: … -->` in the filter file, `needs_filter` regenerating when the file is missing, unreadable, without a hash or with a different hash, a failed generation leaving the previous file untouched (R14), and the marker stripped from `-show-profile` (R17); headless `error` on a `--source` source sets `incomplete` (exit 1), dropped-in errors do not (R16); an unreadable `text.md` in the filter input noted as `intake.note.filter_text_missing` (T9); tests for each
 
 ## Group 9: Quarantine release
-- [ ] `-release-quarantine <id>` tool (chat-only, user-only): report and text as in `-show-quarantine`, confirm default no, ingest via the sources module without re-guarding, mark released and delete `content.enc` (R7)
-- [ ] Tests: release confirm/decline, release refused headless with and without `--yes` (exit 2), not agent-callable, released content appears in `sources/` and the manifest, and a second release of the same id fails
+- [x] `-release-quarantine <id>` tool (chat-only, user-only): report and text as in `-show-quarantine`, confirm default no, ingest via the sources module without re-guarding, mark released and delete `content.enc` (R7)
+- [x] Tests: release confirm/decline, release refused headless with and without `--yes` (exit 2), not agent-callable, released content appears in `sources/` and the manifest, and a second release of the same id fails
 
 ## Group 10: Texts, docs, constitution and live eval
 - [ ] cs/en messages for all new tools, flags, questions and summaries; system prompt and tour "next steps" mention `-add-information` and `-show-profile` (R19)

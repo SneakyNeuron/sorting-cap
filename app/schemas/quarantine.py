@@ -1,13 +1,14 @@
-"""`-show-quarantine` input and output (R6)."""
+"""`-show-quarantine` and `-release-quarantine` input and output (R6, R7)."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
 from app.schemas.base import ToolInput, ToolOutput, positional
 from app.schemas.guard import QuarantineReport
+from app.schemas.sources import SourceResult
 
 if TYPE_CHECKING:
     from app.tools.context import ToolContext
@@ -83,3 +84,42 @@ class ShowQuarantineOutput(ToolOutput):
         say(ctx.msg("quarantine.text_begin"), "dim")
         ctx.console.print(Text(escape_controls(self.text or "")), highlight=False)
         say(ctx.msg("quarantine.text_end"), "dim")
+
+
+class ReleaseQuarantineInput(ToolInput):
+    id: str = Field(json_schema_extra=positional())
+
+
+class ReleaseQuarantineOutput(ToolOutput):
+    """The outcome of one release (R7); metadata only, never the content.
+
+    `released`: ingested as a source (or already stored with the same content), the
+    report marked `released` and `content.enc` deleted. `declined`: the user said no,
+    nothing changed. `failed`: the source could not be stored (e.g. no text could be
+    extracted); the item stays quarantined and the run is incomplete.
+    """
+
+    status: Literal["released", "declined", "failed"]
+    item: QuarantineReport
+    source: SourceResult | None = None
+
+    def as_agent_text(self) -> str:  # never agent-callable; kept metadata-only anyway
+        return self.model_dump_json()
+
+    def render(self, ctx: ToolContext) -> None:
+        from rich.text import Text
+
+        from app.guard.quarantine import escape_controls
+
+        params: dict[str, str] = {"id": escape_controls(self.item.id)}
+        if self.source is not None:
+            if self.source.slug:
+                from app.intake.sources import sources_dir
+
+                params["path"] = escape_controls(str(sources_dir(ctx.workspace) / self.source.slug))
+            params["reason"] = escape_controls(self.source.reason or "")
+        key = f"release_quarantine.{self.status}"
+        if self.status == "released" and self.source and self.source.status == "skipped_duplicate":
+            key = "release_quarantine.released_duplicate"
+        style = {"released": "green", "declined": None, "failed": "red"}[self.status]
+        ctx.console.print(Text(ctx.msg(key, **params), style=style or ""), highlight=False)

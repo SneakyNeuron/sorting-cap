@@ -186,6 +186,7 @@ def test_completion_candidates(registry):
         "-settings",
         "-setup",
         "-show-quarantine",
+        "-release-quarantine",
         "-show-profile",
         "-add-information",
         "-stub",
