@@ -274,3 +274,13 @@ def test_verdict_url_has_no_trailing_punctuation():
     assert result.decision == "allowed"
     assert result.spec == "https://firma.cz/kariera"
     assert verdict("www.firma.cz!", ["www.firma.cz"]).spec == "https://www.firma.cz"
+
+
+@pytest.mark.parametrize(
+    "token", ["fe80::1/a.pdf", "fe80::1%eth0/x.html", "::1/cv.md", "2001:db8::5/a.b"]
+)
+def test_unbracketed_ipv6_bare_token_is_not_a_typed_host(token):
+    # T7: no IPv6 literal in any form; the host is no longer cut at the first `:`
+    result = verdict(f"http://{token}", [f"see {token}"])
+    assert result.decision == "refused"
+    assert result.reason == "url_not_typed"

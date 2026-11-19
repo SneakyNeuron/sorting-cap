@@ -1,4 +1,5 @@
-"""Shared test doubles: fake chat model, scripted prompts, fake command runner, fake scorer."""
+"""Shared test doubles: fake chat models (plain, scripted tool calls, structured),
+scripted prompts, fake command runner, fake scorer."""
 
 from __future__ import annotations
 
@@ -44,6 +45,47 @@ class FakeToolModel(GenericFakeChatModel):
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         self.received.append(list(messages))
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+class ScriptedToolModel(GenericFakeChatModel):
+    """A tool-calling fake for the intake agent (Phase 3 T9): each call returns the next
+    `script` item (an `AIMessage`, a text, or an exception it raises); `received`
+    records the messages of every call and `bound` the tool names of every `bind_tools`.
+    An empty script fails the call."""
+
+    script: list = []
+    received: list = []
+    bound: list = []
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound.append([t.name for t in tools])
+        return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        from langchain_core.outputs import ChatGeneration, ChatResult
+
+        self.received.append(list(messages))
+        if not self.script:
+            raise AssertionError("unexpected model call")
+        reply = self.script.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
+        message = AIMessage(reply) if isinstance(reply, str) else reply
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
+def scripted_model(*script: Any) -> ScriptedToolModel:
+    return ScriptedToolModel(messages=iter([]), script=list(script), received=[], bound=[])
+
+
+def tool_calls(*calls: tuple[str, dict], text: str = "") -> AIMessage:
+    """One AI message with several tool calls (ids `c1`, `c2`, …) and optional text."""
+    return AIMessage(
+        text,
+        tool_calls=[
+            {"name": name, "args": args, "id": f"c{n}"} for n, (name, args) in enumerate(calls, 1)
+        ],
+    )
 
 
 @dataclass

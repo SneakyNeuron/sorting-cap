@@ -274,13 +274,14 @@ def _unquote(spec: str) -> str:
 def _is_bare_host(key: str) -> bool:
     """The host of a bare token's URL key is a name, not an address: its last label
     contains a letter and is no `0x` number, and the host is no IP literal in any form
-    `inet_aton` or `ipaddress` accept (`10.1`, `127.1`, `0x7f.1`, `[::1]`). Parses
+    `inet_aton` or `ipaddress` accept (`10.1`, `127.1`, `0x7f.1`, `[::1]`); a host with
+    more than one `:` is an unbracketed IPv6 literal (`fe80::1`), never a name. Parses
     only; resolves nothing."""
     host = key
     for sep in "/?#":
         host = host.split(sep, 1)[0]
-    if host.startswith("["):
-        return False  # bracketed IPv6 literal
+    if host.startswith("[") or host.count(":") > 1:
+        return False  # an IPv6 literal, bracketed or not (`fe80::1`)
     host = host.split(":", 1)[0].rstrip(".")
     if not host:
         return False
