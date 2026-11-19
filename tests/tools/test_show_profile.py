@@ -137,6 +137,35 @@ def test_headless_json(workspace):
     assert "SOURCE-TEXT-MARKER" not in out.getvalue()
 
 
+def test_profile_hash_marker_is_not_shown(workspace):
+    setup_profile(workspace, "en", with_filter=False)
+    sha = "c" * 64
+    marked = f"# Filter\n\n<!-- profile-sha256: {sha} -->\n\nBackend roles in Prague.\n"
+    (workspace / FILTER_FILE).write_text(marked, encoding="utf-8")
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, ShowProfileInput())
+    assert out.filter_text == FILTER
+    out.render(ctx)
+    assert "profile-sha256" not in buf.getvalue() and sha not in buf.getvalue()
+    out_json, err = io.StringIO(), io.StringIO()
+    assert run_headless(["show-profile", "--json"], stdout=out_json, stderr=err) == EXIT_OK
+    assert json.loads(out_json.getvalue())["filter_text"] == FILTER
+
+
+def test_generated_filter_file_is_shown_without_the_marker(workspace):
+    from app.intake.filter_file import write_filter
+    from app.schemas.filter import FilterFile
+
+    setup_profile(workspace, "en", with_filter=False)
+    write_filter(
+        workspace, FilterFile(summary="Backend roles."), Texts("en"), profile_sha256="d" * 64
+    )
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, ShowProfileInput())
+    assert "profile-sha256" not in out.filter_text and "Backend roles." in out.filter_text
+    assert "\n\n\n" not in out.filter_text
+
+
 @pytest.mark.parametrize("lang", ["cs", "en"])
 def test_headless_text(workspace, lang):
     setup_profile(workspace, lang)

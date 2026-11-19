@@ -311,7 +311,15 @@ def build_graph(
         result = RoundResult.model_validate(state["result"])
         if not needs_filter(ctx.workspace, profile_changed=result.profile_changed):
             return {}
-        sources = stored_texts(ctx.workspace, load_manifest(ctx.workspace))
+        sources, unreadable = stored_texts(ctx.workspace, load_manifest(ctx.workspace))
+        for origin in unreadable:
+            result.notes.append(
+                RoundNote(
+                    kind="filter_text_missing",
+                    subject=origin,
+                    text=ctx.msg("intake.note.filter_text_missing", origin=origin),
+                )
+            )
         outcome = generate(model, texts, ctx.workspace, sources=sources)
         if outcome.truncated:
             origin = ctx.msg("intake.origin.filter_sources")
@@ -331,7 +339,12 @@ def build_graph(
                 )
             )
         else:
-            write_filter(ctx.workspace, outcome.filter, texts)
+            write_filter(
+                ctx.workspace,
+                outcome.filter,
+                texts,
+                profile_sha256=outcome.profile_sha256 or "",
+            )
             result.filter_written = True
         return {"result": result.model_dump(mode="json")}
 

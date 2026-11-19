@@ -49,8 +49,24 @@ def test_dict_reply_is_validated():
 
 def test_model_error_and_invalid_output_become_error():
     for failure in (RuntimeError("boom"), OutputParserException("bad json"), {"skills": 3}):
-        outcome = extract(structured_model(failure), EN, ProfileDoc(), text="x")
+        replies = [failure] if isinstance(failure, RuntimeError) else [failure] * 3
+        model = structured_model(*replies)
+        outcome = extract(model, EN, ProfileDoc(), text="x")
         assert outcome.extraction is None and outcome.error
+        assert model.queue == []
+
+
+def test_uses_the_shared_structured_call_with_raw_output():
+    model = structured_model(Extraction())
+    extract(model, EN, ProfileDoc(), text="x")
+    assert model.options == [{"method": None, "include_raw": True}]
+
+
+def test_invalid_output_is_retried_with_the_error():
+    model = structured_model({"skills": 3}, {"skills": {"text": "Go"}})
+    outcome = extract(model, EN, ProfileDoc(), text="x")
+    assert outcome.extraction.skills.text == "Go" and outcome.error is None
+    assert len(model.calls) == 2 and len(model.calls[1]) == 4
 
 
 def test_text_over_budget_is_cut_and_flagged():

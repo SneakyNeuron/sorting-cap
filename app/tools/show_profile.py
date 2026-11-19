@@ -1,12 +1,14 @@
 """`-show-profile` (agent-callable, headless allowed): the profile, sources and filter file (R17).
 
 It reads only `profile/profile.md`, `profile/sources/manifest.json` and
-`listing_filter_file.md`; never a source's `text.md` or anything in `quarantine/`.
+`listing_filter_file.md` (shown without its internal `profile-sha256` marker); never a
+source's `text.md` or anything in `quarantine/`.
 """
 
 from __future__ import annotations
 
 from app.intake.checklist import CV_ITEM, ITEMS
+from app.intake.filter_file import strip_profile_hash
 from app.intake.profile import (
     ProfileError,
     cv_body,
@@ -26,7 +28,7 @@ from app.tools.registry import Tool
 def _read_filter(ctx: ToolContext) -> str | None:
     path = filter_path(ctx.workspace)
     try:
-        return path.read_text(encoding="utf-8")
+        return strip_profile_hash(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, UnicodeDecodeError) as exc:

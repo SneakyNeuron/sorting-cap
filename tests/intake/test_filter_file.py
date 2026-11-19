@@ -87,7 +87,7 @@ def test_render_keeps_each_criterion_on_one_line():
 
 
 def test_write_is_private(workspace):
-    path = ff.write_filter(workspace, FILTER, Texts("en"))
+    path = ff.write_filter(workspace, FILTER, Texts("en"), profile_sha256="a" * 64)
     assert path == filter_path(workspace)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
@@ -119,6 +119,20 @@ def test_generate_cuts_source_texts_at_the_budget(workspace):
     payload = json.loads(model.calls[0][1].content)
     assert sum(len(s["text"]) for s in payload["sources"]) == CHAR_BUDGET
     assert [s["origin"] for s in payload["sources"]] == ["a"]
+
+
+def test_generate_retries_invalid_output(workspace):
+    model = structured_model({"summary": ["not", "a", "string"]}, FILTER)
+    outcome = ff.generate(model, Texts("en"), workspace, sources=[])
+    assert outcome.filter == FILTER
+    assert len(model.calls) == 2
+    assert model.options == [{"method": None, "include_raw": True}]
+
+
+def test_generate_invalid_three_times_is_an_error(workspace):
+    bad = {"summary": ["x"]}
+    outcome = ff.generate(structured_model(bad, bad, bad), Texts("en"), workspace, sources=[])
+    assert outcome.filter is None and outcome.error
 
 
 def test_generate_model_error_is_an_outcome(workspace):
@@ -212,3 +226,132 @@ def test_filter_input_cut_is_noted(workspace):
     result = run_round(ctx, headless=True)
     origin = Texts("en").message("intake.origin.filter_sources")
     assert any(n.kind == "truncated" and n.subject == origin for n in result.notes)
+
+
+# --- staleness: the profile hash in the filter file ---------------------------------
+
+
+def profile_sha(workspace) -> str:
+    import hashlib
+
+    from app.intake.profile import profile_path
+
+    return hashlib.sha256(profile_path(workspace).read_bytes()).hexdigest()
+
+
+def first_round(workspace) -> None:
+    lang(workspace, "en")
+    drop(workspace, "notes.txt", "I want backend roles.")
+    ctx, _ = ctx_for(workspace, structured_model(roles("Backend developer"), FILTER))
+    assert run_round(ctx, headless=True).filter_written
+
+
+def test_filter_file_records_the_profile_hash(workspace):
+    first_round(workspace)
+    text = filter_path(workspace).read_text(encoding="utf-8")
+    assert f"<!-- profile-sha256: {profile_sha(workspace)} -->" in text
+    assert ff.filter_profile_sha(workspace) == profile_sha(workspace)
+    assert not ff.needs_filter(workspace, profile_changed=False)
+
+
+def test_failed_generation_after_a_change_regenerates_next_round(workspace):
+    first_round(workspace)
+    before = filter_path(workspace).read_text(encoding="utf-8")
+    drop(workspace, "more.txt", "Data engineering too.")
+    adds = Extraction(target_roles=ExtractedValue(text="Data engineer", relation="adds"))
+    ctx, _ = ctx_for(workspace, structured_model(adds, RuntimeError("model down")))
+    result = run_round(ctx, headless=True)
+    assert result.profile_changed and not result.filter_written
+    assert filter_path(workspace).read_text(encoding="utf-8") == before  # untouched
+
+    model = structured_model(FilterFile(summary="Backend and data roles."))
+    ctx, _ = ctx_for(workspace, model)
+    result = run_round(ctx, headless=True)
+    assert not result.profile_changed and result.filter_written
+    assert len(model.calls) == 1
+    assert "Backend and data roles." in filter_path(workspace).read_text(encoding="utf-8")
+
+
+def test_hand_edit_to_profile_regenerates(workspace):
+    from app.intake.profile import profile_path
+
+    first_round(workspace)
+    path = profile_path(workspace)
+    path.write_text(path.read_text(encoding="utf-8") + "\nAlso Ostrava.\n", encoding="utf-8")
+    model = structured_model(FilterFile(summary="Brno or Ostrava."))
+    ctx, _ = ctx_for(workspace, model)
+    result = run_round(ctx, headless=True)
+    assert result.filter_written and len(model.calls) == 1
+    assert "Also Ostrava." in json.loads(model.calls[0][1].content)["profile"]
+    assert ff.filter_profile_sha(workspace) == profile_sha(workspace)
+
+
+def test_matching_hash_makes_no_model_call(workspace):
+    first_round(workspace)
+    model = structured_model()
+    ctx, _ = ctx_for(workspace, model)
+    result = run_round(ctx, headless=True)
+    assert not result.filter_written and model.calls == []
+
+
+def test_filter_without_hash_comment_regenerates(workspace):
+    import re
+
+    first_round(workspace)
+    path = filter_path(workspace)
+    path.write_text(re.sub(r"<!-- profile-sha256: [0-9a-f]+ -->\n*", "", path.read_text()))
+    assert ff.filter_profile_sha(workspace) is None
+    model = structured_model(FILTER)
+    ctx, _ = ctx_for(workspace, model)
+    assert run_round(ctx, headless=True).filter_written and len(model.calls) == 1
+
+
+def test_unreadable_filter_file_regenerates(workspace):
+    first_round(workspace)
+    filter_path(workspace).write_bytes(b"\xff\xfe broken")
+    assert ff.filter_profile_sha(workspace) is None
+    assert ff.needs_filter(workspace, profile_changed=False)
+
+
+# --- an unreadable stored text in the filter input ----------------------------------
+
+
+def test_stored_texts_reports_unreadable_sources(workspace):
+    from app.intake.sources import load_manifest
+
+    first_round(workspace)
+    drop(workspace, "more.txt", "Data engineering too.")
+    adds = Extraction(target_roles=ExtractedValue(text="Data engineer", relation="adds"))
+    ctx, _ = ctx_for(workspace, structured_model(adds, FILTER))
+    run_round(ctx, headless=True)
+    manifest = load_manifest(workspace)
+    first, second = manifest.sources
+    (sources_dir(workspace) / first.slug / "text.md").write_bytes(b"\xff\xfe")
+    texts, unreadable = ff.stored_texts(workspace, manifest)
+    assert [origin for origin, _ in texts] == [second.origin]
+    assert unreadable == [first.origin]
+
+
+@pytest.mark.parametrize("language", ["cs", "en"])
+def test_unreadable_text_is_noted_in_the_round(workspace, language):
+    from app.intake.sources import load_manifest
+    from app.schemas.intake import AddInformationOutput
+    from app.tools.add_information import summary
+
+    first_round(workspace)
+    lang(workspace, language)
+    (entry,) = load_manifest(workspace).sources
+    (sources_dir(workspace) / entry.slug / "text.md").unlink()
+    filter_path(workspace).unlink()  # forces a regeneration
+    model = structured_model(FILTER)
+    ctx, buf = ctx_for(workspace, model)
+    result = run_round(ctx, headless=True)
+    assert result.filter_written
+    assert json.loads(model.calls[0][1].content)["sources"] == []
+    expected = Texts(language).message("intake.note.filter_text_missing", origin=entry.origin)
+    notes = [n for n in result.notes if n.kind == "filter_text_missing"]
+    assert [(n.subject, n.text) for n in notes] == [(entry.origin, expected)]
+    out: AddInformationOutput = summary(ctx, result)
+    assert not out.incomplete
+    out.render(ctx)
+    assert " ".join(expected.split()) in " ".join(buf.getvalue().split())

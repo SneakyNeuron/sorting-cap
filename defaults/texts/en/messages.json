@@ -53,6 +53,7 @@
   "intake.ask.intro": "Now tell me about yourself, freely, in a few sentences (empty to skip):",
   "intake.ask.source_more": "Another source (empty line to continue):",
   "intake.ask.sources": "Sources first: file paths (.txt, .md, .pdf, .html) or URLs, one per line. Empty line to continue.\nSource:",
+  "intake.note.filter_text_missing": "The stored text of {origin} cannot be read; it was left out of the filter file.",
   "intake.note.model_error_answer": "The model could not read your answer to “{title}” ({detail}); it is kept as you wrote it.",
   "intake.note.model_error_filter": "The model could not generate the filter file ({detail}); the previous one, if any, is kept.",
   "intake.note.model_error_intro": "The model could not read your introduction ({detail}); nothing was taken from it.",

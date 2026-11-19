@@ -25,10 +25,32 @@ class ExtractedValue(BaseModel):
     `adds` (new details, appended) or `contradicts` (a conflict for the user).
     """
 
-    text: str = Field(description="The item's value as short Markdown, in the user's words.")
+    text: str = Field(
+        description=(
+            "What the text states about this item, as short Markdown in the user's words "
+            "and language. Only facts the text actually gives count as a value; never "
+            "guess or fill in from general knowledge."
+        )
+    )
     relation: Relation | None = Field(
         default=None,
-        description="Only for items already filled: match, adds or contradicts.",
+        description=(
+            "Set only when the item already has a current value, otherwise null. "
+            "'match': the text says the same as the current value (nothing new); "
+            "'adds': the text gives new details that fit with the current value and "
+            "can be appended to it; 'contradicts': the text disagrees with the current "
+            "value (a conflict the user resolves)."
+        ),
+    )
+
+
+def _item(meaning: str) -> Any:
+    return Field(
+        default=None,
+        description=(
+            f"{meaning} Null when the text says nothing about it; a question or a vague "
+            "remark is not a value."
+        ),
     )
 
 
@@ -39,18 +61,47 @@ class Extraction(BaseModel):
     whether a source text is a CV or résumé.
     """
 
-    target_roles: ExtractedValue | None = None
-    experience: ExtractedValue | None = None
-    skills: ExtractedValue | None = None
-    education: ExtractedValue | None = None
-    languages: ExtractedValue | None = None
-    salary: ExtractedValue | None = None
-    contract_type: ExtractedValue | None = None
-    locations: ExtractedValue | None = None
-    work_mode: ExtractedValue | None = None
-    start_date: ExtractedValue | None = None
-    industries: ExtractedValue | None = None
-    is_cv: bool = Field(default=False, description="True when the text is a CV or résumé.")
+    target_roles: ExtractedValue | None = _item(
+        "Target roles: the job titles or kinds of role the user is looking for."
+    )
+    experience: ExtractedValue | None = _item(
+        "Work experience: past and current roles, employers, years and what the user did."
+    )
+    skills: ExtractedValue | None = _item(
+        "Key skills: technologies, tools, methods and abilities the user has."
+    )
+    education: ExtractedValue | None = _item(
+        "Education: degrees, schools, fields of study, certificates and courses."
+    )
+    languages: ExtractedValue | None = _item(
+        "Languages: the languages the user speaks and how well (level)."
+    )
+    salary: ExtractedValue | None = _item(
+        "Salary range: the pay the user wants, with amount, currency and period if given."
+    )
+    contract_type: ExtractedValue | None = _item(
+        "Contract type: the employment forms the user accepts, e.g. HPP (full employment), "
+        "IČO (self-employed), DPP or DPČ (part-time agreements), full-time or part-time."
+    )
+    locations: ExtractedValue | None = _item(
+        "Locations: the cities, regions or countries where the user wants to work."
+    )
+    work_mode: ExtractedValue | None = _item(
+        "Work mode: on-site, hybrid or remote, and any limits such as office days."
+    )
+    start_date: ExtractedValue | None = _item(
+        "Earliest start date: when the user can start, or their notice period."
+    )
+    industries: ExtractedValue | None = _item(
+        "Industries and companies: sectors or employers the user prefers or avoids."
+    )
+    is_cv: bool = Field(
+        default=False,
+        description=(
+            "True only when the text itself is the user's CV or résumé (a source, not "
+            "a chat answer); false for other documents, notes and web pages."
+        ),
+    )
 
     def values(self) -> list[tuple[str, ExtractedValue]]:
         """The non-empty values in checklist order."""
@@ -114,6 +165,7 @@ NoteKind = Literal[
     "model_error_source",
     "source_text_missing",
     "model_error_filter",
+    "filter_text_missing",
 ]
 
 

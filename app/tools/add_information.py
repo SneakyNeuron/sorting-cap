@@ -7,8 +7,9 @@ extracted are ingested, the profile filled and the filter file regenerated.
 
 The provider and model are checked, and the model built, before anything touches the
 workspace, so a missing model leaves it unchanged (R16). Guarded sources refused for
-a missing classifier mark the output `incomplete` (exit 1 headless), as does a
-failed filter generation. A corrupt manifest, an unreadable profile and workspace
+a missing classifier mark the output `incomplete` (exit 1 headless), as do a
+failed filter generation and a source given with `--source` that failed (`error`;
+failed drop-ins are only reported). A corrupt manifest, an unreadable profile and workspace
 write failures end the round with a localized error (R10).
 """
 
@@ -58,11 +59,16 @@ def _source_dirs(ctx: ToolContext) -> list[str]:
     return [str(root / e.slug) for e in manifest.sources]
 
 
-def summary(ctx: ToolContext, result: RoundResult) -> AddInformationOutput:
+def summary(
+    ctx: ToolContext, result: RoundResult, *, explicit: bool = False
+) -> AddInformationOutput:
+    """The round's summary. `explicit`: the sources were given with `--source`, so a
+    failed one (`error`, not a drop-in) also marks the run incomplete."""
     refused = any(s.status == "refused_no_classifier" for s in result.sources)
     filter_failed = any(n.kind == "model_error_filter" for n in result.notes)
+    failed = explicit and any(s.status == "error" and not s.dropped_in for s in result.sources)
     return AddInformationOutput(
-        incomplete=refused or filter_failed,
+        incomplete=refused or filter_failed or failed,
         cancelled=result.cancelled,
         sources=[s for s in result.sources if in_summary(s)],
         changed=result.changed,
@@ -92,7 +98,7 @@ def handle(ctx: ToolContext, inputs: AddInformationInput) -> AddInformationOutpu
         raise ToolError(ctx.msg("add_information.write_failed", detail=short_error(exc))) from exc
     finally:
         ctx.model_factory = built
-    return summary(ctx, result)
+    return summary(ctx, result, explicit=bool(sources))
 
 
 TOOL = Tool(

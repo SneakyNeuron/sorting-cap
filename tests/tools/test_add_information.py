@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -189,6 +190,29 @@ def test_headless_guarded_source_without_classifier(en, cwd):
     assert str(profile_path(en)) in flat  # the summary is still printed
 
 
+def test_headless_explicit_source_error_exits_1(en, cwd):
+    (cwd / "a.txt").write_text("I want backend roles.", encoding="utf-8")
+    model = structured_model(roles("Backend developer"), FILTER)
+    code, out, err = headless(
+        ["add-information", "--source", str(cwd / "a.txt"), "--source", str(cwd / "nope.txt")],
+        model,
+    )
+    assert code == EXIT_FAILURE
+    assert load_profile(en).body("target_roles") == "Backend developer"  # a.txt processed
+    flat = " ".join(out.split())
+    assert f"failed: {cwd / 'nope.txt'}" in flat
+    assert str(profile_path(en)) in flat  # the summary is still printed
+
+
+def test_headless_dropped_in_error_does_not_fail_the_run(en, cwd):
+    drop(en, "empty.txt", "")
+    drop(en, "notes.txt", "Backend roles, please.")
+    model = structured_model(roles("Backend developer"), FILTER)
+    code, out, err = headless(["add-information"], model)
+    assert code == EXIT_OK, err
+    assert "empty.txt" in out  # the error is reported in the summary
+
+
 def test_headless_without_model_changes_nothing(workspace, cwd):
     save_settings(workspace, Settings(language="en"))
     (cwd / "a.txt").write_text("I want backend roles.", encoding="utf-8")
@@ -256,7 +280,9 @@ def test_summary_lists_conflicts_paths_and_every_outcome(en, cwd, classifier):
     (cwd / "same.txt").write_text("Java expert.", encoding="utf-8")
     contradiction = Extraction(skills=ExtractedValue(text="Java", relation="contradicts"))
     model = structured_model(contradiction)  # the profile did not change: no filter call
-    filter_path(en).write_text("old\n", encoding="utf-8")
+    sha = hashlib.sha256(profile_path(en).read_bytes()).hexdigest()
+    old = f"old\n<!-- profile-sha256: {sha} -->\n"
+    filter_path(en).write_text(old, encoding="utf-8")
     ctx, buf = make_ctx(en, handler=pages, model_factory=lambda _s, _c: model)
     out = handle(
         ctx,
@@ -275,7 +301,7 @@ def test_summary_lists_conflicts_paths_and_every_outcome(en, cwd, classifier):
         "quarantined",
         "error",
     ]
-    assert not out.incomplete
+    assert out.incomplete  # `missing.txt` was given with `--source` and failed
     out.render(ctx)
     text = " ".join(buf.getvalue().split())
     (entry,) = load_manifest(en).sources
@@ -292,7 +318,7 @@ def test_summary_lists_conflicts_paths_and_every_outcome(en, cwd, classifier):
     assert EN.message("add_information.summary.filter_kept") in text
     for path in (profile_path(en), folder, manifest_path(en), filter_path(en)):
         assert str(path) in text
-    assert filter_path(en).read_text(encoding="utf-8") == "old\n"
+    assert filter_path(en).read_text(encoding="utf-8") == old
 
 
 def test_duplicate_drop_in_left_out_of_summary(en, cwd, classifier):
