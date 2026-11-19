@@ -23,26 +23,39 @@ Goal: the user tells the cap about themselves by chat and sources, and gets revi
 - [x] User can say "next" anytime; the cap tells where every profile file is stored
 - [x] `listing_filter_file.md` (what the user is looking for and all derived filters) regenerated after every intake round; intake loop can be re-entered anytime
 
-## Phase 3: Scrape pipeline
+## Phase 3: Conversational intake
+Spec: [backlog request](backlog/2026-11-19-conversational-intake.md)
+Goal: `/add-information` becomes a free conversation that knows what it still needs and gathers files and links mentioned anywhere in a message.
+- [ ] Stored per-item status for the checklist (known or missing, and where from: conversation, file, web), kept in the workspace
+- [ ] The LLM drives the conversation using that status: asks for missing must-know items first, fills holes, decides when to finish; fallback when the model fails or is small
+- [ ] Paths and URLs detected in any message, ingested immediately through the sources module and guard, and reported; the rest of the message used as information
+- [ ] Phase 2 maintainability follow-ups ([backlog](backlog/2026-11-19-phase2-maintainability.md)), including the intake graph structure (D20)
+- [ ] mypy added to CI and the definition of done; existing errors fixed
+
+## Phase 4: Scrape pipeline
 Goal: `/scrape-jobs` turns the user's stored links into a deduplicated store of relevant, structured listings.
 - [ ] `/add-web-links`: store and list job-board / career-page links
 - [ ] Threaded httpx scraper with readability extraction, per-site Playwright fallback, robots.txt and rate limits
 - [ ] All scraped content through the injection guard
+- [ ] Redirect and fetch safety for unattended scraping, including DNS rebinding between the redirect check and the connect (known limitation from phase 2)
 - [ ] Relevance filter: dedicated filter model (verify `jaredpalmer/kev-27b`, fallback to chat model) with `listing_filter_file.md` + predefined prompt, tuned for recall and precision
 - [ ] Structured extraction into the Pydantic listing schema (including listing language)
 - [ ] Dedupe on position title + company + listing date against stored listings; store files + SQLite index with status `unresolved`
 - [ ] Headless run summary shown in chat
 
-## Phase 4: Review and scheduling
+## Phase 5: Review and scheduling
 Goal: the user triages listings in chat and can run scrapes periodically.
 - [ ] `/list-unresolved`, `/list-accepted`, `/list-rejected`
 - [ ] Approve / reject commands; rejected listings can be reopened or approved later
 - [ ] `/set-crontab`: install, show and remove crontab entries calling the headless runner for `scrape-jobs`
 
-## Phase 5: Company research and motivation letters
-Goal: approving a listing produces a company folder, job folder, company research and a fact-checked motivation letter.
+## Phase 6: Company research
+Goal: approving a listing produces a company folder, a job folder and a guarded, summarised company research file.
 - [ ] On approval: create company folder (if missing) and job subfolder with listing summary and original copy
 - [ ] Company research: company website and employee reviews, through the injection guard, summarised into the company file
+
+## Phase 7: Motivation letters
+Goal: each approved job gets a fact-checked motivation letter in the listing's language, driven by user-editable letter skills.
 - [ ] Default letter skills shipped and copied to the workspace; user edits them by hand or via chat
 - [ ] Letter generation in the listing's language (user override possible)
 - [ ] Reflection loop: seller agent, sceptical company agent, fact-checker over the LlamaIndex index of user and company files; iteration cap; unsupported claims flagged
@@ -53,5 +66,3 @@ Goal: approving a listing produces a company folder, job folder, company researc
 - Additional UIs (web, mobile) and a public API
 - Multi-language beyond cs/en
 - Employer side: companies describe a job, the LLM proposes whom to look for, and retrieves pre-generated candidate profiles and assessments via RAG
-- [Conversational intake](backlog/2026-11-19-conversational-intake.md): `/add-information` as a free conversation with stored item status and automatic path/URL ingestion (next feature after Phase 2)
-- [Phase 2 maintainability follow-ups](backlog/2026-11-19-phase2-maintainability.md): shared output helpers, graph node structure, test fixtures, typechecker
