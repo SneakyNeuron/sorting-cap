@@ -118,3 +118,7 @@
 | Hash in `-show-profile` | The `profile-sha256` comment is stripped from the shown filter text | It is an internal marker, not content | implementation (Group 8 fixes) |
 | Explicit source errors headless | A `--source` source with `error` status sets `incomplete` (exit 1); dropped-in errors are only reported | The user asked for that source; a stray drop-in should not fail scripted runs | implementation (Group 8 fixes) |
 | Unreadable stored text for the filter | Left out of the filter input with a localized note (`intake.note.filter_text_missing`); not incomplete | The profile still carries the information; the user learns why the filter may miss it | implementation (Group 8 fixes) |
+| Release that cannot be stored | Item stays quarantined, `content.enc` kept, run marked incomplete | Never delete the only copy | implementation (Group 9) |
+| Release of duplicate content | Released and `content.enc` deleted; message names the existing folder | Content is already in `sources/` | implementation (Group 9) |
+| Released source type | Inferred from the report's source: URL → `url`, path → `html` keeping `.htm`/`.html` (otherwise `.html`) | Only URLs and HTML are ever guarded | implementation (Group 9) |
+| Release headless guard | Handler also refuses under `HeadlessPrompter`, behind the runner's chat-only check | `--yes` can never release by another route | implementation (Group 9) |
