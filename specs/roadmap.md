@@ -53,4 +53,5 @@ Goal: approving a listing produces a company folder, job folder, company researc
 - Additional UIs (web, mobile) and a public API
 - Multi-language beyond cs/en
 - Employer side: companies describe a job, the LLM proposes whom to look for, and retrieves pre-generated candidate profiles and assessments via RAG
+- [Conversational intake](backlog/2026-11-19-conversational-intake.md): `/add-information` as a free conversation with stored item status and automatic path/URL ingestion (next feature after Phase 2)
 - [Phase 2 maintainability follow-ups](backlog/2026-11-19-phase2-maintainability.md): shared output helpers, graph node structure, test fixtures, typechecker
