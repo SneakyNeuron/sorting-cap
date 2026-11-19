@@ -68,11 +68,11 @@ Roadmap Phase 2. Phase 1 left a working chat shell, the tool registry, settings 
 - [x] Tests: release confirm/decline, release refused headless with and without `--yes` (exit 2), not agent-callable, released content appears in `sources/` and the manifest, and a second release of the same id fails
 
 ## Group 10: Texts, docs, constitution and live eval
-- [ ] cs/en messages for all new tools, flags, questions and summaries; system prompt and tour "next steps" mention `-add-information` and `-show-profile` (R19)
-- [ ] README: `-add-information` (dialog and headless), sources, profile files, filter file (generated only), `-show-profile`, the guard, classifier download, quarantine (encrypted; `-show-quarantine`, `-release-quarantine`), workspace notes; CHANGELOG entries
-- [ ] Amend `specs/mission.md` and `specs/tech-stack.md` per T13
-- [ ] `tests/live/` with a `live` pytest marker deselected by default (`addopts`), the real classifier on Czech and English injection and benign samples, precision and recall printed per language (T12)
-- [ ] Tests: message key parity cs/en; every prompt file reachable via `app/texts.py`; `pytest` without `-m live` collects no live test
+- [x] cs/en messages for all new tools, flags, questions and summaries; system prompt and tour "next steps" mention `-add-information` and `-show-profile` (R19)
+- [x] README: `-add-information` (dialog and headless), sources, profile files, filter file (generated only), `-show-profile`, the guard, classifier download, quarantine (encrypted; `-show-quarantine`, `-release-quarantine`), workspace notes; CHANGELOG entries
+- [x] Amend `specs/mission.md` and `specs/tech-stack.md` per T13
+- [x] `tests/live/` with a `live` pytest marker deselected by default (`addopts`), the real classifier on Czech and English injection and benign samples, precision and recall printed per language (T12)
+- [x] Tests: message key parity cs/en; every prompt file reachable via `app/texts.py`; `pytest` without `-m live` collects no live test
 
 ## Edge cases
 - The classifier is missing during a chat round with a URL → download offered; on no, that source is refused and the round continues with the others.

@@ -75,3 +75,38 @@ def test_one_language_set_everywhere():
     assert set(get_args(Settings.model_fields["language"].annotation)) == set(LANGUAGES)
     language_input = SettingsInput.model_fields["language"].annotation
     assert set(get_args(get_args(language_input)[0])) == set(LANGUAGES)
+
+
+def test_dynamic_message_key_families_complete():
+    """Keys built at run time (`f"prefix.{value}"`) exist for every value, in both languages."""
+    from typing import get_args
+
+    from app.intake.checklist import ITEM_IDS
+    from app.intake.filter_file import SECTIONS
+    from app.schemas.guard import QuarantineReport
+    from app.schemas.intake import NoteKind
+    from app.schemas.quarantine import ReleaseQuarantineOutput
+    from app.schemas.sources import SourceErrorCode
+
+    expected = set()
+    for item_id in ITEM_IDS:
+        expected |= {f"profile.item.{item_id}.title", f"profile.item.{item_id}.question"}
+    expected |= {f"filter.section.{key}" for key in SECTIONS}
+    expected |= {f"intake.note.{kind}" for kind in get_args(NoteKind)}
+    status = QuarantineReport.model_fields["status"].annotation
+    expected |= {f"quarantine.status.{s}" for s in get_args(status)}
+    release = ReleaseQuarantineOutput.model_fields["status"].annotation
+    expected |= {f"release_quarantine.{s}" for s in get_args(release)}
+    # `quarantine_failed` carries the quarantine store's own message, not `sources.<code>`
+    expected |= {f"sources.{c}" for c in get_args(SourceErrorCode) if c != "quarantine_failed"}
+    for lang in LANGUAGES:
+        missing = expected - message_keys(lang)
+        assert not missing, (lang, sorted(missing))
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_tour_and_system_prompt_mention_intake_commands(lang):
+    texts = Texts(lang)
+    for text in (texts.prewritten("tour"), texts.prompt("chat", "system")):
+        assert "-add-information" in text
+        assert "-show-profile" in text

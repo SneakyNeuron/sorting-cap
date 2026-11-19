@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import tomllib
 
 from app.paths import REPO_ROOT
@@ -65,3 +67,28 @@ def test_no_torch_transformers_or_optimum():
     versions = _lock_versions()
     for name in ("torch", "transformers", "optimum"):
         assert name not in versions, name
+
+
+def _collect(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def test_default_run_collects_no_live_test():
+    """The live suite (T12) is opt-in: plain `pytest` deselects it via `addopts`."""
+    default = _collect("tests/live")
+    assert default.returncode == 5, default.stdout + default.stderr  # no tests collected
+    assert "deselected" in default.stdout
+    opted_in = _collect("-m", "live", "tests/live")
+    assert opted_in.returncode == 0, opted_in.stdout + opted_in.stderr
+    assert "tests/live/" in opted_in.stdout
+
+
+def test_live_marker_registered():
+    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["tool"]["pytest"]
+    assert any(m.startswith("live:") for m in config["ini_options"]["markers"])

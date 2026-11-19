@@ -43,7 +43,10 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
-addopts = "--import-mode=importlib --disable-socket --allow-unix-socket"
+addopts = "--import-mode=importlib --disable-socket --allow-unix-socket -m 'not live'"
+markers = [
+    "live: opt-in evaluation against real models (run with `pytest -m live`); not run by default or in CI",
+]
 
 [dependency-groups]
 dev = [
