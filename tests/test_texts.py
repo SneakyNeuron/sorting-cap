@@ -1,4 +1,6 @@
 import json
+import re
+import string
 
 import pytest
 
@@ -146,6 +148,68 @@ def test_dynamic_message_key_families_complete():
         assert not missing, (lang, sorted(missing))
 
 
+def _fields(text: str) -> set[str]:
+    return {name for _, name, _, _ in string.Formatter().parse(text) if name is not None}
+
+
+def test_message_placeholders_match_across_languages():
+    catalogs = {
+        lang: json.loads((TEXTS_DIR / lang / "messages.json").read_text()) for lang in LANGUAGES
+    }
+    en, cs = catalogs["en"], catalogs["cs"]
+    differ = sorted(key for key in en if _fields(en[key]) != _fields(cs[key]))
+    assert not differ, differ
+
+
+CODE_TERM = re.compile(r"`([^`\n]+)`")
+
+
+def test_prompt_code_terms_match_across_languages():
+    """Tool names, fields and refusal codes a prompt names are the same in cs and en.
+
+    The only extra a Czech prompt may name is a Czech exit word (`hotovo`).
+    """
+    czech_words = {w.strip() for w in Texts("cs").message("intake.words.done").split(",")}
+    for rel in listed_files(PROMPTS_DIR / "en"):
+        en = set(CODE_TERM.findall((PROMPTS_DIR / "en" / rel).read_text(encoding="utf-8")))
+        cs = set(CODE_TERM.findall((PROMPTS_DIR / "cs" / rel).read_text(encoding="utf-8")))
+        assert cs - czech_words == en - czech_words, (str(rel), sorted(cs ^ en))
+
+
+# Words that describe `/add-information` as a conversation (Phase 3 R16), and the words of
+# the Phase 2 form that must no longer describe it.
+CONVERSATION = {
+    "en": ("conversation", ("question", "introduction")),
+    "cs": ("rozhovor", ("otázk", "představení")),
+}
+
+
+def _intake_lines(text: str) -> list[str]:
+    return [line for line in text.splitlines() if "/add-information" in line]
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_tour_system_prompt_and_help_describe_the_conversation(lang):
+    texts = Texts(lang)
+    word, stale = CONVERSATION[lang]
+    tour, next_steps = texts.prewritten("tour").split("\n## ")[-2:]
+    described = {
+        "tour": " ".join(_intake_lines(tour)),
+        "next steps": " ".join(_intake_lines(next_steps)),
+        "system prompt": " ".join(_intake_lines(texts.prompt("chat", "system"))),
+        "help": texts.message("tool.add-information.description"),
+    }
+    for name, text in described.items():
+        assert word in text.lower(), (name, text)
+    described["help --source"] = texts.message("tool.add-information.arg.source")
+    for name, text in described.items():
+        for old in stale:
+            assert old not in text.lower(), (name, old)
+    # The tour tells how to end the conversation (R10).
+    exit_word = texts.message("intake.words.done").split(",")[-1].strip()
+    assert f"`{exit_word}`" in tour + next_steps
+
+
 @pytest.mark.parametrize("lang", LANGUAGES)
 def test_tour_and_system_prompt_mention_intake_commands(lang):
     texts = Texts(lang)
@@ -186,7 +250,7 @@ def test_scripted_dialog_keys_removed_from_catalogs():
 def test_scripted_dialog_keys_not_referenced_in_code_texts_or_prompts():
     from app.paths import REPO_ROOT
 
-    roots = [REPO_ROOT / "app", TEXTS_DIR, PROMPTS_DIR, REPO_ROOT / "tests"]
+    roots = [REPO_ROOT / "app", TEXTS_DIR, PROMPTS_DIR, REPO_ROOT / "tests", REPO_ROOT / "docs"]
     found = []
     for root in roots:
         for path in root.rglob("*"):

@@ -7,7 +7,7 @@
 ## Frameworks & libraries
 | Concern | Choice | Why |
 |---|---|---|
-| Agents & orchestration | LangGraph (`langgraph` 1.x) on LangChain | Stateful graphs for intake (`interrupt()` for questions), scraping pipeline and the reflection loop; LangChain tool and model abstractions. |
+| Agents & orchestration | LangGraph (`langgraph` 1.x) on LangChain | Stateful graphs for intake (`interrupt()` for each user message of the conversation), scraping pipeline and the reflection loop; LangChain tool and model abstractions. |
 | Document ingestion & retrieval | LlamaIndex (`llama-index-core`, `llama-index-readers-file`), `beautifulsoup4` | LlamaIndex reads PDFs now and builds the local index the fact-checker queries later (phase 7); `beautifulsoup4` extracts visible and hidden HTML text. |
 | Schemas | Pydantic v2 | Every structured LLM output, every tool input/output and every stored record is a Pydantic model. |
 | LLM access | LangChain chat models (`ChatOllama`; `ChatDeepSeek` from `langchain-deepseek` for OpenAI-compatible endpoints, because `ChatOpenAI` drops reasoning output), built from the user's settings | One abstraction for chat, tools and LangGraph; the provider is a setting, not code. No separate in-house LLM port. |
@@ -34,7 +34,7 @@
 - Default letter skills ship with the app and are copied into the user's workspace, where the user edits them by hand or through the chat.
 
 ## Data
-- A single user workspace directory (default under the user's home, configurable) holds everything the user owns as plain files: profile files, sources, `listing_filter_file.md`, quarantine, the injection classifier in `models/prompt-guard/<revision>/`, the workspace notes `README.md` and `AGENTS.md`, company folders with job subfolders (listing summary, original copy, company research, letters), letter skills.
+- A single user workspace directory (default under the user's home, configurable) holds everything the user owns as plain files: profile files (`profile/profile.md` and its checklist status `profile/checklist.json`), sources, `listing_filter_file.md`, quarantine, the injection classifier in `models/prompt-guard/<revision>/`, the workspace notes `README.md` and `AGENTS.md`, company folders with job subfolders (listing summary, original copy, company research, letters), letter skills.
 - `listing_filter_file.md` is generated only: written from the profile and source texts, overwritten on each regeneration, and changed through `/add-information`, never by hand edits.
 - SQLite (in the workspace) is the index for listings: status (unresolved / accepted / rejected), dedupe keys and timestamps. Files stay the source of truth for content; the index can be rebuilt from them.
 - Dedupe key: normalised position title + company name + listing date.
@@ -74,5 +74,5 @@
 - Linux first (bash, crontab); macOS best effort.
 
 ## Project structure
-- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas, the injection guard in `guard/`, the profile intake with its LangGraph graph in `intake/`; later scraping, storage), `prompts/` (per language and agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
+- Top level: `app/` (tools registry and headless runner, chat REPL and agent, providers, setup, settings and workspace, schemas, the injection guard in `guard/`, the profile intake in `intake/`: its LangGraph graph, the intake agent's turn and round tools, the checklist status store, source detection and file search; later scraping, storage), `prompts/` (per language and agent, e.g. `prompts/<lang>/intake/agent.md` for the intake agent), `defaults/` (prewritten texts and message catalogs read from the repository; later, letter skills copied to the workspace), `tests/`, `specs/`.
 - No web server or web UI (FastAPI, uvicorn and htmx are out of scope); `specs/` is the design record.

@@ -77,10 +77,10 @@ class ProfileDoc(BaseModel):
 
 
 class ItemUpdate(BaseModel):
-    """Text for one item extracted from a source or the introduction (fill-only, R13).
+    """Text for one item extracted from a source (fill-only, R13).
 
     `relation` is set by the extraction step when the item was already filled; `origin`
-    names where the text came from (a source slug or origin, or the introduction).
+    names the source the text came from (its slug or origin).
     `gap` is the reader's hole note for the value; `source` the checklist origin of the
     source (`file:<slug>` / `web:<slug>`), `None` for text from the conversation.
     """

@@ -3,7 +3,7 @@
 
 SortingCap interviews you, reads your CV, builds a structured profile, then finds you the best fit among the live job listings. It runs locally in your terminal, Czech by default, English available.
 
-> Status: phase 2 — chat shell, guided model setup, profile intake, the generated filter file and the prompt-injection guard with an encrypted quarantine. Scraping and letters follow in later phases (see `specs/roadmap.md`).
+> Status: phase 3 — chat shell, guided model setup, conversational profile intake with a per-item checklist status, the generated filter file and the prompt-injection guard with an encrypted quarantine. Scraping and letters follow in later phases (see `specs/roadmap.md`).
 
 ## Requirements
 
@@ -55,8 +55,8 @@ Type them in the chat; anything that does not start with `/` goes to the cap. A 
 | `/tour` | App overview and tour |
 | `/settings [--language cs\|en] [--provider …] [--model …] [--ollama-base-url …] [--openai-base-url …] [--guard-threshold …]` | Show or change settings (keys are shown masked). Switching to a remote provider asks for confirmation; changing `--provider` without `--model` clears the model. `--guard-threshold` (between 0 and 1, default 0.5) is the classifier score at which web content is quarantined |
 | `/setup` | Guided setup (chat only) |
-| `/add-information [--source <path\|url> …]` | Tell the cap about yourself: sources, an introduction and questions for what is missing; updates the profile and the filter file. With `--source` (repeatable) no questions are asked |
-| `/show-profile` | Your profile items (missing ones marked), sources (CV flagged), the filter file and where each file lives |
+| `/add-information [--source <path\|url> …]` | A conversation about you: facts, file paths and links in any message; the cap asks about what is missing or only partly known, then updates the profile, its checklist status and the filter file. With `--source` (repeatable) there is no conversation |
+| `/show-profile` | Your profile items with their state (missing, partly known with what is still missing, known) and where each was learned, sources (CV flagged), the filter file and where each file lives |
 | `/show-quarantine [<id>]` | List quarantined content, or decrypt one item and print it as plain text (chat only) |
 | `/release-quarantine <id>` | Show one quarantined item and, after your explicit yes, add it as a source (chat only) |
 | `/exit` | Quit (also Ctrl-D). Ctrl-C cancels the current line or running command |
@@ -67,15 +67,20 @@ The cap itself can only call `/help`, `/tour` and `/show-profile`; it can never 
 
 ## `/add-information`
 
-In chat it runs one intake round:
+In chat it runs one intake round, a free conversation with the cap's intake agent:
 
-1. **Sources** — file paths (absolute, `~/…` or relative) or `http(s)://` URLs, one per line; an empty line continues. Supported: `.txt`, `.md` (UTF-8, with a cp1250 / latin-1 fallback for older Czech files), `.pdf` (text only, no OCR), `.html`/`.htm` and web pages (HTML only, at most 5 MiB, 20 s timeout, 5 redirects).
-2. **Introduction** — a few free sentences about you; empty skips.
-3. **Questions** — one prewritten question per item still missing, must-know first (target roles, work experience, key skills, education, languages with level), then nice-to-have (CV, salary, contract type HPP / IČO / DPP / DPČ, locations, work mode, earliest start, industries or companies to prefer or avoid). `next` (cs also `dál`) or an empty answer skips a question, `done` (cs also `hotovo`) ends the round anywhere. Ctrl-C or Ctrl-D cancels the round: sources already copied stay, the profile and filter file stay as they were.
+- **The cap opens** with what it still needs, based on the checklist status (see below). There is no form: no sources prompt, no introduction prompt, no prewritten questions.
+- **You answer in your own words.** Any message may mix facts about you with file paths and links: `http(s)://` URLs, `www.` hosts (read as `https://`), and paths ending in `.txt`, `.md`, `.pdf`, `.html` or `.htm` (absolute, `~/…`, `./…`, `../…`, or relative; a path with spaces in quotes). A relative path without `./`, such as `README.md` or `docs/cv.pdf`, counts only when that file exists in the current directory. Supported: `.txt`, `.md` (UTF-8, with a cp1250 / latin-1 fallback for older Czech files), `.pdf` (text only, no OCR), `.html`/`.htm` and web pages (HTML only, at most 5 MiB, 20 s timeout, 5 redirects). Each file or link is added and read at once, with one line per source in the chat ("added cv.pdf; filled Key skills, Education"); at most 10 per message. A path you wrote explicitly that does not exist is reported as not found, and the cap asks where the file is.
+- **The cap asks** about missing must-know items first (target roles, work experience, key skills, education, languages with level), then about holes in partly known items (a salary without a currency, say), then about missing nice-to-have items (CV, salary, contract type HPP / IČO / DPP / DPČ, locations, work mode, earliest start, industries or companies to prefer or avoid).
+- **Links and files it did not spot**: when you write `firma.cz/kariera` or "my CV is somewhere in Downloads", the cap can add the link, or search for the file by name (in the folder you named, or the current directory, `~/Downloads`, `~/Documents`, `~/Desktop` and `~`, three levels deep, at most 20 results). It may only add what you typed this round; a file it found is read only after you confirm the full path (default no).
+- **Ending**: the cap ends the round itself when nothing worth asking is left or you want to stop. Typing exactly `done` (cs also `hotovo`) or pressing Ctrl-D ends and saves at once, without asking the model. Ctrl-C cancels the round: sources already copied stay (and are read next round), `profile.md`, `checklist.json` and the filter file stay as they were.
+- **When the model fails** on a turn, you get a short error and can write again; nothing said so far is lost. After 3 failed turns in a row the round ends and is saved, with a note in the summary.
 
-The model turns your answers, introduction and sources into profile items. A direct answer replaces its item; sources and the introduction only fill empty items. When they say something different from an item you already have, the item is left alone and the difference is listed as a conflict for you to resolve. The round ends with a summary: items filled or changed, items still missing, conflicts, every source's outcome (added, skipped as a duplicate, quarantined with its id and reason, refused, error) and the path of every profile file.
+What you say is recorded as a direct answer: it replaces its item, or is added to it as a new paragraph, and settles conflicts on that item. Sources only fill empty items: when they say something different from an item you already have, the item is left alone and the difference is listed as a conflict for you to resolve. The intake agent never sees the text of a file or web page; a separate model without tools reads each source and the agent only learns which items it filled, added to or conflicts with. The conversation itself is not stored anywhere: the next round starts from `profile.md`, `checklist.json` and the source manifest.
 
-Headless, the same round runs without questions:
+The round ends with a summary: items filled or changed, items still missing, partly known items with what is still missing, conflicts, every source's outcome (added, skipped as a duplicate, quarantined with its id and reason, refused, error), notes and the path of every profile file.
+
+Headless, the round runs without a conversation:
 
 ```bash
 uv run sortingcap run add-information --source ~/cv.pdf --source https://example.com/me
@@ -90,6 +95,7 @@ uv run sortingcap run add-information          # only dropped-in files and unfin
 |---|---|
 | `profile/profile.md` | One `## <title> <!-- item:<id> -->` section per checklist item. Edit it by hand any time; the id comment is what the cap keys on, so keep it (the title may change). Sections without an id comment are kept verbatim. The CV section is written by the cap from the sources flagged as CV |
 | `profile/sources/<slug>/` | One folder per source: `original.<ext>` (for URLs the fetched `original.html` plus `source.url` with the final URL) and the extracted `text.md` |
+| `profile/checklist.json` | The checklist status of each item: `missing`, `partial` (with a note on what is still missing) or `known`, where it was learned (`conversation`, `file:<slug>`, `web:<slug>`, `hand_edit`, `profile`) and when. Reconciled with `profile.md` on every read, so an item you empty by hand counts as missing and one you fill by hand as known; an invalid file is rebuilt from `profile.md` with a note. Written at the end of a round, also by headless rounds |
 | `profile/sources/manifest.json` | Every source: origin, SHA-256, type, CV flag, whether it was extracted, time. Adding the same content again (even under another name) is skipped |
 | `listing_filter_file.md` | Generated from the profile and the source texts: what you are looking for, must-match and nice-to-match criteria, exclusions, keywords in Czech and English. **Generated only**: overwritten every time, change it through `/add-information`. A `<!-- profile-sha256: … -->` marker records the `profile.md` it was built from; it is regenerated when that hash differs (e.g. after a hand edit of `profile.md`), when it is missing or unreadable. A failed generation leaves the previous file in place |
 
@@ -155,11 +161,14 @@ LangSmith tracing is always off.
 ```bash
 uv run ruff check          # lint
 uv run ruff format         # format (CI runs --check)
+uv run mypy app            # typecheck (default mode with the pydantic plugin; tests/ not checked)
 uv run pytest              # offline test suite; network sockets are disabled
 uv run pytest -m live      # opt-in: real classifier on Czech and English samples, precision and recall per language
 ```
 
 The live suite needs the classifier installed (`/setup`, last step) in your workspace, or `SORTINGCAP_LIVE_WORKSPACE` pointing at one that has it; otherwise it skips. It is not run by default or in CI and is not required to pass.
+
+CI (GitHub Actions) runs ruff, mypy and the offline test suite.
 
 Design and decisions live in `specs/` (mission, tech stack, roadmap, and one folder per feature).
 

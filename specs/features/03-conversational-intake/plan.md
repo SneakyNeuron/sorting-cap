@@ -69,10 +69,10 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] Tests: summary in cs and en; no removed key referenced anywhere; Phase 2 tool tests still pass where the behaviour is unchanged
 
 ## Group 8: Texts, docs and specs in sync
-- [ ] Tour "next steps", chat system prompt and `/add-information` help text describe the conversation (cs/en) (R16)
-- [ ] README and CHANGELOG: conversational `/add-information`, inline files and links, `checklist.json`, `done`/Ctrl-D, `/show-profile` states, mypy in CI
-- [ ] Tech stack Project structure (T10); Phase 2 R9 left as written, with this spec stated as superseding it
-- [ ] Tests: cs/en message and prompt parity; tour and system prompt mention the conversation
+- [x] Tour "next steps", chat system prompt and `/add-information` help text describe the conversation (cs/en) (R16)
+- [x] README and CHANGELOG: conversational `/add-information`, inline files and links, `checklist.json`, `done`/Ctrl-D, `/show-profile` states, mypy in CI
+- [x] Tech stack Project structure (T10); Phase 2 R9 left as written, with this spec stated as superseding it
+- [x] Tests: cs/en message and prompt parity; tour and system prompt mention the conversation
 
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
