@@ -25,8 +25,12 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from app.files import write_private
 from app.intake.extract import CHAR_BUDGET
+from app.intake.profile import profile_path
+from app.intake.sources import source_text
 from app.messages import short_error
 from app.providers.structured import invoke_structured
 from app.schemas.filter import FilterFile, FilterOutcome
@@ -78,8 +82,6 @@ def needs_filter(workspace: Path, *, profile_changed: bool) -> bool:
 def stored_texts(workspace: Path, manifest: Manifest) -> tuple[list[tuple[str, str]], list[str]]:
     """`(origin, text)` of every stored source whose `text.md` can be read, in manifest
     order, and the origins of those that cannot (left out; the caller notes them)."""
-    from app.intake.sources import source_text
-
     out = []
     unreadable = []
     for entry in manifest.sources:
@@ -117,8 +119,6 @@ def build_input(texts: Texts, profile: str, sources: list[dict[str, str]]) -> st
 
 
 def _profile_bytes(workspace: Path) -> bytes:
-    from app.intake.profile import profile_path
-
     try:
         return profile_path(workspace).read_bytes()
     except FileNotFoundError:
@@ -139,8 +139,6 @@ def generate(
     sources: Iterable[tuple[str, str]],
 ) -> FilterOutcome:
     """Run one generation from `profile.md` and `sources`; never raises for a model failure."""
-    from langchain_core.messages import HumanMessage, SystemMessage
-
     items, truncated = budget_sources(sources)
     profile, sha = _profile(workspace)
     messages = [

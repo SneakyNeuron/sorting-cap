@@ -6,7 +6,7 @@ import hashlib
 
 import httpx
 import pytest
-from helpers import ScriptedPrompter, make_ctx
+from helpers import FakeScorer, ScriptedPrompter, make_ctx
 
 from app.guard import classifier
 from app.guard.classifier import (
@@ -30,11 +30,7 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    classifier.reset_cache()
-    yield
-    classifier.reset_cache()
+pytestmark = pytest.mark.usefixtures("fresh_cache")
 
 
 @pytest.fixture
@@ -49,14 +45,6 @@ def blobs(monkeypatch):
         classifier, "FILES", tuple(ModelFile(p, len(b), sha(b)) for p, b in data.items())
     )
     return data
-
-
-class FakeScorer:
-    def __init__(self, value: float = 0.0) -> None:
-        self.value = value
-
-    def score(self, text: str) -> float:
-        return self.value
 
 
 @pytest.fixture

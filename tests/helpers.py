@@ -1,4 +1,4 @@
-"""Shared test doubles: fake chat model, scripted prompts, fake command runner."""
+"""Shared test doubles: fake chat model, scripted prompts, fake command runner, fake scorer."""
 
 from __future__ import annotations
 
@@ -17,6 +17,20 @@ from rich.console import Console
 from app.setup.hardware import Hardware
 from app.setup.runner import CommandResult
 from app.tools.context import Choice, InputUnavailable, ToolContext
+
+
+class FakeScorer:
+    """A guard classifier stand-in: `default` for every text, or the score of the first
+    `table` key the text contains; records every text it was asked about in `seen`."""
+
+    def __init__(self, default: float = 0.01, table: dict[str, float] | None = None) -> None:
+        self.default = default
+        self.table = table or {}
+        self.seen: list[str] = []
+
+    def score(self, text: str) -> float:
+        self.seen.append(text)
+        return next((v for k, v in self.table.items() if k in text), self.default)
 
 
 class FakeToolModel(GenericFakeChatModel):

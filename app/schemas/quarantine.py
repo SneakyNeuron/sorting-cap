@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
+from app.messages import escape_controls, say
 from app.schemas.base import ToolInput, ToolOutput, positional
 from app.schemas.guard import QuarantineReport
 from app.schemas.sources import SourceResult
@@ -49,14 +50,9 @@ class ShowQuarantineOutput(ToolOutput):
         from rich.table import Table
         from rich.text import Text
 
-        from app.guard.quarantine import escape_controls
-
-        def say(text: str, style: str | None = None) -> None:
-            ctx.console.print(Text(text, style=style or ""), highlight=False)
-
         if self.item is None:
             if not self.items:
-                say(ctx.msg("quarantine.empty"))
+                say(ctx.console, ctx.msg("quarantine.empty"))
                 return
             table = Table(box=None, padding=(0, 2))
             for column in ("id", "time", "source", "reason", "status"):
@@ -79,11 +75,11 @@ class ShowQuarantineOutput(ToolOutput):
             ("reason", reason_text(ctx, r)),
             ("status", ctx.msg(f"quarantine.status.{r.status}")),
         ):
-            say(f"{ctx.msg(f'quarantine.column.{label}')}: {escape_controls(value)}")
-        say(ctx.msg("quarantine.untrusted"), "yellow")
-        say(ctx.msg("quarantine.text_begin"), "dim")
-        ctx.console.print(Text(escape_controls(self.text or "")), highlight=False)
-        say(ctx.msg("quarantine.text_end"), "dim")
+            say(ctx.console, f"{ctx.msg(f'quarantine.column.{label}')}: {value}")
+        say(ctx.console, ctx.msg("quarantine.untrusted"), "yellow")
+        say(ctx.console, ctx.msg("quarantine.text_begin"), "dim")
+        say(ctx.console, self.text or "")
+        say(ctx.console, ctx.msg("quarantine.text_end"), "dim")
 
 
 class ReleaseQuarantineInput(ToolInput):
@@ -108,8 +104,6 @@ class ReleaseQuarantineOutput(ToolOutput):
 
     def render(self, ctx: ToolContext) -> None:
         from rich.text import Text
-
-        from app.guard.quarantine import escape_controls
 
         params: dict[str, str] = {"id": escape_controls(self.item.id)}
         if self.source is not None:

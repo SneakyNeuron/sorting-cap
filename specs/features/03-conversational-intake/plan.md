@@ -20,12 +20,12 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - `app/providers/structured.invoke_structured` as the only structured-output path.
 
 ## Group 1: Phase 2 maintainability follow-ups (no behaviour change)
-- [ ] D14: move `escape_controls` from `app/guard/quarantine.py` and the duplicated `say()` closure of `schemas/profile.py` and `schemas/intake.py` (and `schemas/quarantine.py`) to `app/messages.py`; import at top level; keep a re-export only if a test or module still needs the old path
-- [ ] D18: top-level imports of `source_text` and `profile_path` in `app/intake/filter_file.py`
-- [ ] D21: `item_title` / `item_body` helpers used by both `app/intake/profile.py` and `app/tools/show_profile.py`; a shared mixin for the four path fields of `AddInformationOutput` and `ShowProfileOutput`
-- [ ] D22: configurable `FakeScorer` in `tests/helpers.py`, `fresh_cache`, `cwd` and `en` fixtures in `tests/conftest.py`; the copies removed from the test files
-- [ ] Mark D14, D18, D21, D22 as done in the backlog file (D20 noted as handled in Group 6)
-- [ ] Tests: the full suite passes unchanged in behaviour; ruff clean
+- [x] D14: move `escape_controls` from `app/guard/quarantine.py` and the duplicated `say()` closure of `schemas/profile.py` and `schemas/intake.py` (and `schemas/quarantine.py`) to `app/messages.py`; import at top level; keep a re-export only if a test or module still needs the old path
+- [x] D18: top-level imports of `source_text` and `profile_path` in `app/intake/filter_file.py` (and of `langchain_core.messages`, so the module has no function-level imports)
+- [x] D21: `item_title` / `item_body` helpers used by both `app/intake/profile.py` and `app/tools/show_profile.py`; a shared mixin (`ProfilePaths` in `app/schemas/profile.py`) for the four path fields of `AddInformationOutput` and `ShowProfileOutput`
+- [x] D22: configurable `FakeScorer` in `tests/helpers.py`, `fresh_cache` (opt-in through `pytestmark`), `cwd` and `en` fixtures in `tests/conftest.py`; the copies removed from the test files
+- [x] Mark D14, D18, D21, D22 as done in the backlog file (D20 noted as handled in Group 6)
+- [x] Tests: the full suite passes unchanged in behaviour; ruff clean
 
 ## Group 2: mypy in CI and the definition of done
 - [ ] Add mypy (latest stable, pinned) to the dev dependency group; `[tool.mypy]` config as T1, with per-module `ignore_missing_imports` overrides only where a package has no stubs

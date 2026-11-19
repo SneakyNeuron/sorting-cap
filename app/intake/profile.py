@@ -24,6 +24,7 @@ from pathlib import Path
 from app.errors import LocalizedError
 from app.files import private_dir, write_private
 from app.intake.checklist import CV_ITEM, ITEMS, is_item_id
+from app.intake.checklist import item as checklist_item
 from app.messages import short_error
 from app.schemas.profile import (
     Conflict,
@@ -122,6 +123,17 @@ def cv_body(manifest: Manifest) -> str:
     )
 
 
+def item_title(doc: ProfileDoc, item_id: ItemId, texts: Texts) -> str:
+    """The item's heading title as written in the file, or its localized title."""
+    section = doc.items.get(item_id)
+    return (section.title if section else "") or checklist_item(item_id).title(texts)
+
+
+def item_body(doc: ProfileDoc, item_id: ItemId, manifest: Manifest) -> str:
+    """The item's body: the CV section from the manifest, any other from its section."""
+    return cv_body(manifest) if item_id == CV_ITEM else doc.body(item_id)
+
+
 def render(doc: ProfileDoc, texts: Texts, manifest: Manifest) -> str:
     header = doc.header.strip() or texts.message("profile.header").strip()
     parts = [header]
@@ -129,9 +141,8 @@ def render(doc: ProfileDoc, texts: Texts, manifest: Manifest) -> str:
         if unknown.after is None:
             parts.append(unknown.raw)
     for item in ITEMS:
-        section = doc.items.get(item.id)
-        title = (section.title if section else "") or item.title(texts)
-        body = cv_body(manifest) if item.id == CV_ITEM else (section.body if section else "")
+        title = item_title(doc, item.id, texts)
+        body = item_body(doc, item.id, manifest)
         heading = f"## {title} <!-- item:{item.id} -->"
         parts.append(f"{heading}\n\n{body}" if body else heading)
         parts.extend(u.raw for u in doc.unknown if u.after == item.id)

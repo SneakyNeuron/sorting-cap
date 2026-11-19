@@ -19,7 +19,6 @@ from app.guard.quarantine import (
     QuarantineError,
     QuarantineKeyLost,
     QuarantineKeyMissing,
-    escape_controls,
 )
 from app.texts import Texts
 
@@ -302,10 +301,3 @@ def test_create_needs_a_reason(workspace):
     assert not (workspace / QUARANTINE_DIR).exists() or not any(
         (workspace / QUARANTINE_DIR).iterdir()
     )
-
-
-def test_escape_controls():
-    text = "a\tb\nc\r\x1b[31mred‮evil⁦x​z\x00 end"
-    out = escape_controls(text)
-    assert out == "a\tb\nc\\x0d\\x1b[31mred\\u202eevil\\u2066x\\u200bz\\x00\\u2028end"
-    assert escape_controls("[bold]x[/bold] <b>y</b> :smile:") == "[bold]x[/bold] <b>y</b> :smile:"

@@ -24,7 +24,6 @@ import os
 import re
 import secrets
 import shutil
-import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -216,29 +215,3 @@ class Quarantine:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(path / CONTENT_FILE)
         return released
-
-
-# --- display -----------------------------------------------------------------
-
-_KEEP = frozenset("\n\t")
-_ESCAPED_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp", "Cs", "Co", "Cn"})
-
-
-def _escape_char(ch: str) -> str:
-    code = ord(ch)
-    if code < 0x100:
-        return f"\\x{code:02x}"
-    if code < 0x10000:
-        return f"\\u{code:04x}"
-    return f"\\U{code:08x}"
-
-
-def escape_controls(text: str) -> str:
-    """Text safe to print: control, format (bidi, zero-width) and separator characters
-    other than newline and tab are shown as `\\xNN` / `\\uNNNN` escapes."""
-    return "".join(
-        _escape_char(ch)
-        if ch not in _KEEP and unicodedata.category(ch) in _ESCAPED_CATEGORIES
-        else ch
-        for ch in text
-    )

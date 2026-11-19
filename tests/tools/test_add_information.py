@@ -9,9 +9,8 @@ from pathlib import Path
 
 import httpx
 import pytest
-from helpers import NoPrompts, ScriptedPrompter, make_ctx, structured_model
+from helpers import FakeScorer, NoPrompts, ScriptedPrompter, make_ctx, structured_model
 
-from app.guard import classifier as clf
 from app.guard.quarantine import QUARANTINE_DIR
 from app.intake.filter_file import filter_path
 from app.intake.profile import load_profile, profile_path, save_profile
@@ -41,35 +40,13 @@ INJECTED = (
 FILTER = FilterFile(summary="Backend roles in Brno.", must_match=["Python"])
 
 
-class FakeScorer:
-    def score(self, text: str) -> float:
-        return 0.01
-
-
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    clf.reset_cache()
-    yield
-    clf.reset_cache()
-
-
-@pytest.fixture
-def en(workspace):
-    save_settings(workspace, Settings(language="en", provider="ollama", model="qwen3:8b"))
-    return workspace
+pytestmark = pytest.mark.usefixtures("fresh_cache")
 
 
 @pytest.fixture
 def classifier(monkeypatch):
     """An installed classifier that scores everything as benign."""
     monkeypatch.setattr("app.guard.ensure_classifier", lambda _ctx: FakeScorer())
-
-
-@pytest.fixture
-def cwd(tmp_path) -> Path:
-    path = tmp_path / "input"
-    path.mkdir()
-    return path
 
 
 def pages(request: httpx.Request) -> httpx.Response:

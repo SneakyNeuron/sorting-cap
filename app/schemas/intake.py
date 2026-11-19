@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.messages import say
 from app.schemas.base import ToolInput, ToolOutput
-from app.schemas.profile import Conflict, ItemId, Relation
+from app.schemas.profile import Conflict, ItemId, ProfilePaths, Relation
 from app.schemas.sources import SourceResult
 
 if TYPE_CHECKING:
@@ -216,7 +217,7 @@ class AddInformationInput(ToolInput):
     source: list[str] = Field(default_factory=list)
 
 
-class AddInformationOutput(ToolOutput):
+class AddInformationOutput(ToolOutput, ProfilePaths):
     """The round summary (R15).
 
     `sources` are this round's source outcomes, without duplicate drop-ins (R11).
@@ -231,22 +232,12 @@ class AddInformationOutput(ToolOutput):
     notes: list[RoundNote] = Field(default_factory=list)
     profile_written: bool = False
     filter_written: bool = False
-    profile_path: str
-    sources_dir: str
     source_dirs: list[str] = Field(default_factory=list)
-    manifest_path: str
-    filter_path: str
 
     def render(self, ctx: ToolContext) -> None:
         from pathlib import Path
 
-        from rich.text import Text
-
-        from app.guard.quarantine import escape_controls
         from app.intake.checklist import item
-
-        def say(text: str, style: str | None = None) -> None:
-            ctx.console.print(Text(escape_controls(text), style=style or ""), highlight=False)
 
         def titles(ids: list[ItemId]) -> str:
             return ", ".join(item(i).title(ctx.texts) for i in ids)
@@ -255,19 +246,25 @@ class AddInformationOutput(ToolOutput):
             return str(Path(self.sources_dir) / slug) if slug else self.sources_dir
 
         if self.cancelled:
-            say(ctx.msg("add_information.cancelled"), "yellow")
+            say(ctx.console, ctx.msg("add_information.cancelled"), "yellow")
         else:
-            say(ctx.msg("add_information.summary.title"), "bold")
+            say(ctx.console, ctx.msg("add_information.summary.title"), "bold")
             if self.changed:
-                say(ctx.msg("add_information.summary.changed", items=titles(self.changed)))
+                say(
+                    ctx.console,
+                    ctx.msg("add_information.summary.changed", items=titles(self.changed)),
+                )
             else:
-                say(ctx.msg("add_information.summary.unchanged"))
+                say(ctx.console, ctx.msg("add_information.summary.unchanged"))
             if self.missing:
-                say(ctx.msg("add_information.summary.missing", items=titles(self.missing)))
+                say(
+                    ctx.console,
+                    ctx.msg("add_information.summary.missing", items=titles(self.missing)),
+                )
             else:
-                say(ctx.msg("add_information.summary.complete"))
+                say(ctx.console, ctx.msg("add_information.summary.complete"))
             if self.conflicts:
-                say(ctx.msg("add_information.summary.conflicts"), "yellow")
+                say(ctx.console, ctx.msg("add_information.summary.conflicts"), "yellow")
                 for c in self.conflicts:
                     line = ctx.msg(
                         "add_information.summary.conflict",
@@ -276,11 +273,11 @@ class AddInformationOutput(ToolOutput):
                         proposed=" ".join(c.proposed.split()),
                         origin=c.origin,
                     )
-                    say(f"- {line}", "yellow")
-        say("")
-        say(ctx.msg("add_information.summary.sources"), "bold")
+                    say(ctx.console, f"- {line}", "yellow")
+        say(ctx.console, "")
+        say(ctx.console, ctx.msg("add_information.summary.sources"), "bold")
         if not self.sources:
-            say(ctx.msg("add_information.summary.no_sources"))
+            say(ctx.console, ctx.msg("add_information.summary.no_sources"))
         styles = {"added": None, "skipped_duplicate": "dim"}
         for s in self.sources:
             line = ctx.msg(
@@ -290,21 +287,21 @@ class AddInformationOutput(ToolOutput):
                 id=s.quarantine_id or "",
                 reason=s.reason or "",
             )
-            say(f"- {line}", styles.get(s.status, "yellow"))
+            say(ctx.console, f"- {line}", styles.get(s.status, "yellow"))
         if self.notes:
-            say("")
-            say(ctx.msg("add_information.summary.notes"), "bold")
+            say(ctx.console, "")
+            say(ctx.console, ctx.msg("add_information.summary.notes"), "bold")
             for note in self.notes:
-                say(f"- {note.text}", "yellow")
+                say(ctx.console, f"- {note.text}", "yellow")
         filter_failed = any(n.kind in FILTER_NOT_WRITTEN for n in self.notes)
         if not self.cancelled and not filter_failed:  # a failure is explained in the notes
-            say("")
+            say(ctx.console, "")
             key = "filter_written" if self.filter_written else "filter_kept"
-            say(ctx.msg(f"add_information.summary.{key}"))
-        say("")
-        say(ctx.msg("add_information.summary.files"), "bold")
-        say(f"- {ctx.msg('add_information.file.profile')}: {self.profile_path}")
+            say(ctx.console, ctx.msg(f"add_information.summary.{key}"))
+        say(ctx.console, "")
+        say(ctx.console, ctx.msg("add_information.summary.files"), "bold")
+        say(ctx.console, f"- {ctx.msg('add_information.file.profile')}: {self.profile_path}")
         for path in self.source_dirs:
-            say(f"- {ctx.msg('add_information.file.source')}: {path}")
-        say(f"- {ctx.msg('add_information.file.manifest')}: {self.manifest_path}")
-        say(f"- {ctx.msg('add_information.file.filter')}: {self.filter_path}")
+            say(ctx.console, f"- {ctx.msg('add_information.file.source')}: {path}")
+        say(ctx.console, f"- {ctx.msg('add_information.file.manifest')}: {self.manifest_path}")
+        say(ctx.console, f"- {ctx.msg('add_information.file.filter')}: {self.filter_path}")

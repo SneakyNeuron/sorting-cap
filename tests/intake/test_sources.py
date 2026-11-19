@@ -8,9 +8,8 @@ from pathlib import Path
 
 import httpx
 import pytest
-from helpers import ScriptedPrompter, make_ctx
+from helpers import FakeScorer, ScriptedPrompter, make_ctx
 
-from app.guard import classifier as clf
 from app.guard.quarantine import QUARANTINE_DIR, Quarantine
 from app.intake import sources as src
 from app.schemas.sources import SourceResult
@@ -25,28 +24,7 @@ PAGE = (
 )
 
 
-class FakeScorer:
-    def __init__(self, value: float = 0.01) -> None:
-        self.value = value
-        self.seen: list[str] = []
-
-    def score(self, text: str) -> float:
-        self.seen.append(text)
-        return self.value
-
-
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    clf.reset_cache()
-    yield
-    clf.reset_cache()
-
-
-@pytest.fixture
-def cwd(tmp_path) -> Path:
-    path = tmp_path / "input"
-    path.mkdir()
-    return path
+pytestmark = pytest.mark.usefixtures("fresh_cache")
 
 
 def put(folder: Path, name: str, data: str | bytes) -> Path:

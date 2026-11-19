@@ -80,3 +80,8 @@ Supersedes Phase 2 R9 (the scripted dialog) and the Phase 2 decisions "Questions
 | Bare relative paths | Count only when the file exists; explicit missing paths reported as not found | `README.md` typed in passing must not create noise | spec review |
 | Status value size | Each value cut at 1500 characters in the agent context | Long CV-derived values would fill a small context window | spec review |
 | Roadmap fallback wording | Roadmap bullet reworded to failure handling | The spec decides there is no fallback | spec review |
+| Shared print helper | `say(console, text, style)` in `app/messages.py`, also used by `/show-quarantine` (its lines are escaped as a whole; output unchanged because escaped text contains no further control characters) | One terminal-safe print path for every `render` | implementation (Group 1) |
+| `filter_file.py` imports | `langchain_core.messages` also moved to the top, beyond D18's two imports | V1 checks the module has no function-level imports | implementation (Group 1) |
+| Path-field mixin | `ProfilePaths` in `app/schemas/profile.py`; pydantic puts inherited fields first, so the JSON key order of `/show-profile` and `/add-information` output changes (same keys and values) | Inheritance cannot keep the old field order; the order carries no meaning | implementation (Group 1) |
+| `en` test fixture | One fixture for all tests: English, provider `ollama`, model `qwen3:8b` (the `/add-information` variant) | The other tests do not read provider or model; one fixture instead of two variants | implementation (Group 1) |
+| `fresh_cache` test fixture | In `tests/conftest.py`, not autouse; the four guard and source modules opt in through `pytestmark` | Keeps the reset scope of Phase 2 | implementation (Group 1) |

@@ -10,6 +10,8 @@ import pytest
 from app.intake.checklist import ITEM_IDS, ITEMS, MUST_KNOW, item, items_in_group, message_keys
 from app.intake.profile import (
     ProfileError,
+    item_body,
+    item_title,
     load_profile,
     merge,
     missing_items,
@@ -208,6 +210,22 @@ def test_cv_section_rendered_from_manifest_and_hand_edits_overwritten():
     assert "- [/home/me/cv.pdf](sources/cv-pdf/)" in cv
     assert "- [https://e.com/cv](sources/web-cv/)" in cv
     assert "notes" not in cv
+
+
+def test_item_title_as_written_or_localized():
+    doc = parse("## Moje role <!-- item:target_roles -->\n\nDev\n## <!-- item:skills -->\n")
+    assert item_title(doc, "target_roles", Texts("en")) == "Moje role"
+    assert item_title(doc, "skills", Texts("en")) == item("skills").title(Texts("en"))
+    assert item_title(doc, "salary", Texts("cs")) == item("salary").title(Texts("cs"))
+
+
+def test_item_body_from_section_or_manifest_for_cv():
+    doc = parse("## CV <!-- item:cv -->\n\nmy own text\n## R <!-- item:target_roles -->\n\nDev\n")
+    manifest = Manifest(sources=[entry(cv=True)])
+    assert item_body(doc, "target_roles", manifest) == "Dev"
+    assert item_body(doc, "salary", manifest) == ""
+    assert item_body(doc, "cv", manifest) == "- [/home/me/cv.pdf](sources/cv-pdf/)"
+    assert item_body(doc, "cv", Manifest()) == ""
 
 
 def test_crlf_parsed():

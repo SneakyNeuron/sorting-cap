@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from helpers import ScriptedPrompter, make_ctx, structured_model
 
@@ -15,7 +13,6 @@ from app.intake.sources import load_manifest, sources_dir
 from app.schemas.intake import ExtractedValue, Extraction
 from app.schemas.profile import ItemSection, ProfileDoc
 from app.schemas.sources import Manifest
-from app.settings import Settings, save_settings
 from app.texts import Texts
 
 EN = Texts("en")
@@ -35,19 +32,6 @@ def no_filter(monkeypatch):
     """These tests are about the dialog and extraction; the filter node has its own
     tests (`test_filter_file.py`), so here it never calls the model."""
     monkeypatch.setattr("app.intake.graph.needs_filter", lambda *_a, **_k: False)
-
-
-@pytest.fixture
-def cwd(tmp_path) -> Path:
-    path = tmp_path / "input"
-    path.mkdir()
-    return path
-
-
-@pytest.fixture
-def en(workspace):
-    save_settings(workspace, Settings(language="en"))
-    return workspace
 
 
 def ctx_for(workspace, model, *answers):

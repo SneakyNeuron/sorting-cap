@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
-from helpers import ScriptedPrompter, make_ctx
+from helpers import FakeScorer, ScriptedPrompter, make_ctx
 
 from app.guard import GuardUnavailable, check
 from app.guard import classifier as clf
@@ -23,24 +23,7 @@ def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
-class FakeScorer:
-    """Scores by a per-text table; records every text it was asked about."""
-
-    def __init__(self, default: float = 0.01, table: dict[str, float] | None = None) -> None:
-        self.default = default
-        self.table = table or {}
-        self.seen: list[str] = []
-
-    def score(self, text: str) -> float:
-        self.seen.append(text)
-        return next((v for k, v in self.table.items() if k in text), self.default)
-
-
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    clf.reset_cache()
-    yield
-    clf.reset_cache()
+pytestmark = pytest.mark.usefixtures("fresh_cache")
 
 
 def items(workspace: Path) -> list[Path]:

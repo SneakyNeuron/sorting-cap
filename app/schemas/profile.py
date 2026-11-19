@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.messages import say
 from app.schemas.base import ToolInput, ToolOutput
 from app.schemas.sources import SourceType
 
@@ -129,7 +130,16 @@ class SourceView(BaseModel):
     path: str
 
 
-class ShowProfileOutput(ToolOutput):
+class ProfilePaths(BaseModel):
+    """The four workspace paths shown by `/show-profile` and the `/add-information` summary."""
+
+    profile_path: str
+    sources_dir: str
+    manifest_path: str
+    filter_path: str
+
+
+class ShowProfileOutput(ToolOutput, ProfilePaths):
     """What `/show-profile` read from `profile.md`, `manifest.json` and the filter file.
 
     `filter_text` is `None` while `listing_filter_file.md` does not exist;
@@ -140,48 +150,41 @@ class ShowProfileOutput(ToolOutput):
     sources: list[SourceView] = Field(default_factory=list)
     filter_text: str | None = None
     manifest_error: str | None = None
-    profile_path: str
-    sources_dir: str
-    manifest_path: str
-    filter_path: str
 
     def render(self, ctx: ToolContext) -> None:
-        from rich.text import Text
-
-        from app.guard.quarantine import escape_controls
-
-        def say(text: str, style: str | None = None) -> None:
-            ctx.console.print(Text(escape_controls(text), style=style or ""), highlight=False)
-
         for group in ("must", "nice"):
-            say(ctx.msg(f"profile.group.{group}"), "bold")
+            say(ctx.console, ctx.msg(f"profile.group.{group}"), "bold")
             for view in (v for v in self.items if v.group == group):
                 if view.missing:
-                    say(f"## {view.title}  ({ctx.msg('profile.show.missing')})", "yellow")
+                    say(
+                        ctx.console,
+                        f"## {view.title}  ({ctx.msg('profile.show.missing')})",
+                        "yellow",
+                    )
                     continue
-                say(f"## {view.title}", "cyan")
-                say(view.text)
-            say("")
-        say(ctx.msg("profile.show.sources"), "bold")
+                say(ctx.console, f"## {view.title}", "cyan")
+                say(ctx.console, view.text)
+            say(ctx.console, "")
+        say(ctx.console, ctx.msg("profile.show.sources"), "bold")
         if self.manifest_error:
-            say(self.manifest_error, "yellow")
+            say(ctx.console, self.manifest_error, "yellow")
         elif not self.sources:
-            say(ctx.msg("profile.show.no_sources"))
+            say(ctx.console, ctx.msg("profile.show.no_sources"))
         for source in self.sources:
             flag = f"  [{ctx.msg('profile.show.cv_flag')}]" if source.cv else ""
-            say(f"- {source.origin} ({source.type}){flag} → {source.path}")
-        say("")
-        say(ctx.msg("profile.show.filter"), "bold")
+            say(ctx.console, f"- {source.origin} ({source.type}){flag} → {source.path}")
+        say(ctx.console, "")
+        say(ctx.console, ctx.msg("profile.show.filter"), "bold")
         if self.filter_text is None:
-            say(ctx.msg("profile.show.no_filter"))
+            say(ctx.console, ctx.msg("profile.show.no_filter"))
         else:
-            say(self.filter_text.rstrip())
-        say("")
-        say(ctx.msg("profile.show.files"), "bold")
+            say(ctx.console, self.filter_text.rstrip())
+        say(ctx.console, "")
+        say(ctx.console, ctx.msg("profile.show.files"), "bold")
         for key, path in (
             ("profile", self.profile_path),
             ("sources", self.sources_dir),
             ("manifest", self.manifest_path),
             ("filter", self.filter_path),
         ):
-            say(f"- {ctx.msg(f'profile.show.file.{key}')}: {path}")
+            say(ctx.console, f"- {ctx.msg(f'profile.show.file.{key}')}: {path}")

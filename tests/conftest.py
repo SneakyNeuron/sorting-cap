@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 SENSITIVE = (
@@ -47,3 +49,30 @@ def lenient_texts(monkeypatch):
 def no_retry_waits(monkeypatch):
     """Transient-error retries of structured-output calls never sleep in tests."""
     monkeypatch.setattr("app.providers.structured.default_sleep", lambda _seconds: None)
+
+
+@pytest.fixture
+def fresh_cache():
+    """The classifier cache is empty before and after the test (opt-in per module)."""
+    from app.guard import classifier
+
+    classifier.reset_cache()
+    yield
+    classifier.reset_cache()
+
+
+@pytest.fixture
+def en(workspace):
+    """The workspace with English settings and a configured Ollama model."""
+    from app.settings import Settings, save_settings
+
+    save_settings(workspace, Settings(language="en", provider="ollama", model="qwen3:8b"))
+    return workspace
+
+
+@pytest.fixture
+def cwd(tmp_path) -> Path:
+    """An empty directory standing in for the user's current directory."""
+    path = tmp_path / "input"
+    path.mkdir()
+    return path
