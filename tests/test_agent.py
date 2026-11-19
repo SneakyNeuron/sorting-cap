@@ -57,7 +57,7 @@ def test_tool_list_only_agent_callable(workspace, lenient_texts):
     registry.register(Tool("useronly", In, Out, lambda c, i: Out()))
     agent = agent_for(workspace, fake_model("x"), registry=registry)
     agent.ask("hi", SETTINGS, Credentials(workspace, {}))
-    assert agent.tool_names == ["help", "tour"]
+    assert agent.tool_names == ["help", "tour", "show-profile"]
     assert "settings" not in agent.tool_names and "setup" not in agent.tool_names
 
 

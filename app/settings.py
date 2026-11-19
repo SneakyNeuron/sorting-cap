@@ -36,6 +36,8 @@ class Settings(BaseModel):
     openai_base_url: str | None = None
     setup_completed_at: datetime | None = None
     tour_shown: bool = False
+    # Injection-classifier score at or above which guarded input is flagged (0 < t < 1).
+    guard_threshold: float = 0.5
 
     @field_validator("provider")
     @classmethod
@@ -60,6 +62,17 @@ class Settings(BaseModel):
                 {"value": value},
             )
         return value.strip().rstrip("/")
+
+    @field_validator("guard_threshold")
+    @classmethod
+    def _open_unit_interval(cls, value: float) -> float:
+        if not 0 < value < 1:  # also rejects NaN
+            raise PydanticCustomError(
+                "guard_threshold",
+                "expected a number greater than 0 and less than 1, got {value}",
+                {"value": f"{value:g}"},
+            )
+        return value
 
     def is_remote(self) -> bool:
         return self.provider is not None and get_provider(self.provider).is_remote(self)

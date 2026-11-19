@@ -1,6 +1,6 @@
-"""`-settings` (user-only): show settings, or change them.
+"""`/settings` (user-only): show settings, or change them.
 
-A plain edit: no key prompts and no verification (that is `-setup`'s job).
+A plain edit: no key prompts and no verification (that is `/setup`'s job).
 """
 
 from __future__ import annotations

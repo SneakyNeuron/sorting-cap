@@ -92,7 +92,7 @@ def test_nothing_preselected_when_local_unavailable_with_message(workspace, fake
 def test_failure_returns_to_menu_then_success(workspace, fakes):
     local, remote = fakes
     local.fail = ["setup"]
-    out, prompter, text = run(workspace, "en", "local", "remote")
+    out, prompter, text = run(workspace, "en", "local", "remote", False)
     assert "setup broke" in text and "Back to the menu" in text
     assert out.completed and out.provider == "remote" and out.model == "r1"
     assert len(prompter.choose_calls()) == 3
@@ -114,12 +114,12 @@ def test_quit_leaves_setup_incomplete(workspace, fakes):
 
 
 def test_success_saves_settings_and_shows_tour_once(workspace, fakes):
-    out, _, text = run(workspace, "en", "local")
+    out, _, text = run(workspace, "en", "local", False)
     s = load_settings(workspace)
     assert (s.provider, s.model, s.tour_shown) == ("local", "m1", True)
     assert s.setup_completed_at is not None
     assert "Next steps" in text
-    out, prompter, text = run(workspace, "en", "local")
+    out, prompter, text = run(workspace, "en", "local", False)
     assert "Next steps" not in text
     assert "Currently using local, model m1" in text
 
@@ -170,7 +170,7 @@ def test_novita_key_never_in_settings_logs_or_history(workspace, monkeypatch):
     save_settings(workspace, Settings(language="en"))
     con, buf = console()
     secret = "nv-super-secret-0042"
-    keys = "-setup\r\r1\ry\r" + secret + "\r1\r-settings\r-exit\r"
+    keys = "/setup\r\r1\ry\r" + secret + "\r1\r/settings\r/exit\r"
     with create_pipe_input() as inp, create_app_session(input=inp, output=DummyOutput()):
         repl = Repl(
             workspace,
@@ -259,8 +259,92 @@ def test_new_key_written_only_after_verification(workspace, novita_only):
         True,
         "good-key-123",
         "some/model",
+        False,  # classifier download declined
     )
     assert out.completed is True
     assert Credentials(workspace, {}).get(NOVITA_KEY) == "good-key-123"
     assert ctx.msg("remote.key_saved", path=str(workspace / ".env")) in " ".join(text.split())
     assert ctx.pending_keys == {}
+
+
+# --- final step: classifier download offer (R8) ---------------------------------
+
+
+@pytest.fixture
+def small_classifier(monkeypatch):
+    """Tiny pinned stand-ins for the classifier files, served by a fake HTTP handler."""
+    import hashlib
+
+    import httpx
+
+    from app.guard import classifier
+
+    data = {f.path: f.path.encode() * 4 for f in classifier.FILES}
+    monkeypatch.setattr(
+        classifier,
+        "FILES",
+        tuple(
+            classifier.ModelFile(p, len(b), hashlib.sha256(b).hexdigest()) for p, b in data.items()
+        ),
+    )
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(
+            200, content=data[request.url.path.split("/resolve/")[1].split("/", 1)[1]]
+        )
+
+    handler.calls = calls
+    return handler
+
+
+def _confirms(prompter):
+    return [q for kind, q, _ in prompter.asked if kind == "confirm"]
+
+
+def test_classifier_offered_once_after_success_and_declinable(workspace, fakes, small_classifier):
+    from app.guard import classifier
+
+    prompter = ScriptedPrompter("en", "local", False)
+    ctx, buf = make_ctx(workspace, prompter, handler=small_classifier)
+    out = flow.handle(ctx, SetupInput())
+    assert out.completed and load_settings(workspace).setup_completed_at is not None
+    assert len(_confirms(prompter)) == 1 and classifier.REPO in _confirms(prompter)[0]
+    assert prompter.asked[-1][0] == "confirm"  # the final step
+    assert small_classifier.calls == [] and not classifier.is_installed(workspace)
+    assert "Classifier skipped" in " ".join(buf.getvalue().split())
+
+
+def test_classifier_yes_downloads_in_setup(workspace, fakes, small_classifier):
+    from app.guard import classifier
+
+    ctx, _ = make_ctx(workspace, ScriptedPrompter("en", "local", True), handler=small_classifier)
+    out = flow.handle(ctx, SetupInput())
+    assert out.completed and classifier.is_installed(workspace)
+    assert len(small_classifier.calls) == len(classifier.FILES)
+
+
+def test_classifier_not_offered_when_setup_fails_or_installed(workspace, fakes, small_classifier):
+    from app.guard import classifier
+
+    out, prompter, _ = run(workspace, "en", "quit")
+    assert not out.completed and _confirms(prompter) == []
+    flow.handle(
+        make_ctx(workspace, ScriptedPrompter("en", "local", True), handler=small_classifier)[0],
+        SetupInput(),
+    )
+    assert classifier.is_installed(workspace)
+    out, prompter, _ = run(workspace, "en", "local")  # no confirm answer queued
+    assert out.completed and _confirms(prompter) == []
+
+
+def test_classifier_download_failure_keeps_setup_successful(workspace, fakes):
+    import httpx
+
+    ctx, buf = make_ctx(
+        workspace, ScriptedPrompter("en", "local", True), handler=lambda r: httpx.Response(500)
+    )
+    out = flow.handle(ctx, SetupInput())
+    assert out.completed and load_settings(workspace).provider == "local"
+    assert "classifier download failed" in " ".join(buf.getvalue().split())

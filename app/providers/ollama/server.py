@@ -249,7 +249,7 @@ class OllamaServer:
     def reuse_container(self, container: Container, base_url: str) -> str:
         """Use the existing `ollama` container on the port it is published on.
 
-        A container created on another port by an earlier, unfinished `-setup` is
+        A container created on another port by an earlier, unfinished `/setup` is
         found here again instead of a second `docker run` clashing on its name.
         """
         url = base_url

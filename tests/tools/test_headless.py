@@ -92,20 +92,21 @@ def test_chat_only_refused_with_exit_two(registry):
 def test_chat_only_refused_before_arguments_are_parsed(registry, extra):
     code, _, err = run(["chatty", *extra], registry)
     assert code == 2
-    assert "jen v chatu" in err and "-chatty" in err and "Špatné argumenty" not in err
+    assert "jen v chatu" in err and "/chatty" in err and "Špatné argumenty" not in err
 
 
 def test_runner_flags_anywhere_except_as_a_flag_value(registry):
     assert json.loads(run(["--yes", "stub", "--json"], registry)[1])["answer"] == "True"
     assert json.loads(run(["stub", "--action=confirm", "--yes", "--json"], registry)[1]) == {
-        "answer": "True"
+        "answer": "True",
+        "incomplete": False,
     }
     # `--yes` right after a value-taking flag (or its abbreviation) is that flag's
     # value: the parser rejects it instead of the runner silently auto-confirming
     for argv in (["stub", "--action", "--yes"], ["stub", "--act", "--yes"]):
         code, out, err = run(argv, registry)
         assert (code, out) == (2, ""), argv
-        assert "Špatné argumenty pro -stub" in err
+        assert "Špatné argumenty pro /stub" in err
 
 
 def test_markup_like_error_text_printed_literally(registry):
@@ -125,4 +126,28 @@ def test_setup_refused_headless(extra):
     out, err = io.StringIO(), io.StringIO()
     code = run_headless(["setup", *extra], stdout=out, stderr=err)
     assert code == 2
-    assert "-setup" in err.getvalue()
+    assert "/setup" in err.getvalue()
+
+
+class IncompleteOutput(ToolOutput):
+    answer: str = "partial"
+
+    def render(self, ctx) -> None:
+        ctx.console.print("summary printed", markup=False, highlight=False)
+
+
+def test_incomplete_output_rendered_then_exit_one(lenient_texts):
+    reg = default_registry()
+    reg.register(
+        Tool("partial", StubInput, IncompleteOutput, lambda c, i: IncompleteOutput(incomplete=True))
+    )
+    code, out, _ = run(["partial"], reg)
+    assert code == 1
+    assert "summary printed" in out
+    code, out, _ = run(["partial", "--json"], reg)
+    assert code == 1
+    assert json.loads(out)["incomplete"] is True
+
+
+def test_output_complete_by_default():
+    assert StubOutput(answer="x").incomplete is False

@@ -112,4 +112,4 @@ def run_headless(
         stdout.write(output.model_dump_json() + "\n")
     else:
         output.render(ctx)
-    return EXIT_OK
+    return EXIT_FAILURE if output.incomplete else EXIT_OK

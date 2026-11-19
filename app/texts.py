@@ -1,4 +1,4 @@
-"""Per-language texts: prompts, prewritten texts and the UI message catalog.
+"""Per-language texts: prompts, prewritten texts, the UI message catalog and workspace notes.
 
 This is the only module that reads `prompts/`. Missing keys or files fail loudly.
 """
@@ -10,7 +10,7 @@ from functools import cache
 from pathlib import Path
 from typing import Literal, get_args
 
-from app.paths import PROMPTS_DIR, TEXTS_DIR
+from app.paths import PROMPTS_DIR, TEXTS_DIR, WORKSPACE_NOTES_DIR
 
 # The one definition of the supported languages; `Settings` and tool inputs use `Language`.
 Language = Literal["cs", "en"]
@@ -55,6 +55,13 @@ def has_message(language: str, key: str, texts_dir: Path = TEXTS_DIR) -> bool:
 def prompt_files(prompts_dir: Path = PROMPTS_DIR) -> list[Path]:
     """Every prompt file, as paths relative to the prompts directory."""
     return sorted(p.relative_to(prompts_dir) for p in prompts_dir.rglob("*.md"))
+
+
+def workspace_note(name: str, notes_dir: Path = WORKSPACE_NOTES_DIR) -> str:
+    """A note written into the workspace root (`README.md`, `AGENTS.md`); English only."""
+    if Path(name).name != name:
+        raise TextsError(f"not a workspace note name: {name!r}")
+    return Texts._read(notes_dir / name)
 
 
 class Texts:

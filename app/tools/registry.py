@@ -1,6 +1,6 @@
 """The one tool registry and the argparse parser generated from it.
 
-The same parser serves `sortingcap run <command> ...` and dash-commands typed
+The same parser serves `sortingcap run <command> ...` and slash commands typed
 in chat, so CLI, cron and chat behave identically.
 """
 
@@ -23,6 +23,7 @@ from app.texts import LANGUAGES, Texts, has_message
 from app.tools.context import ToolContext, ToolError
 
 BUILTINS = ("exit",)
+COMMAND_PREFIX = "/"  # chat commands are `/name`; the headless runner takes bare names
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,18 @@ class UnknownCommand(ParseError):
         self.name = name
 
 
+def unknown_command(registry: Registry, texts: Texts, name: str) -> UnknownCommand:
+    """The localized "unknown command /x" error, with a close command name when one exists."""
+    import difflib
+
+    close = difflib.get_close_matches(name, registry.command_names(), n=1)
+    if close:
+        message = texts.message("parse.unknown_command_suggest", name=name, suggestion=close[0])
+    else:
+        message = texts.message("parse.unknown_command", name=name)
+    return UnknownCommand(message, name)
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> typing.NoReturn:
         raise ParseError(message)
@@ -110,8 +123,9 @@ class FieldSpec:
     name: str
     flag: str
     positional: bool
-    # "str" | "bool". Other scalars (int, …) are passed as strings and coerced by the
-    # input model, so a bad value gets the localized validation message.
+    # "str" | "bool" | "list". Other scalars (int, …) are passed as strings and coerced
+    # by the input model, so a bad value gets the localized validation message. A
+    # list-valued field is a repeatable flag (`--source a --source b`).
     kind: str
     choices: list[str] | None
     required: bool
@@ -137,6 +151,8 @@ def field_spec(name: str, info: FieldInfo) -> FieldSpec:
         choices = [str(m.value) for m in annotation]
     elif annotation is bool:
         kind = "bool"
+    elif typing.get_origin(annotation) in (list, tuple, set, frozenset):
+        kind = "list"
     return FieldSpec(
         name=name,
         flag="--" + name.replace("_", "-"),
@@ -169,6 +185,8 @@ def build_parser(registry: Registry, texts: Texts) -> argparse.ArgumentParser:
                 p.add_argument(
                     spec.flag, dest=spec.name, action=argparse.BooleanOptionalAction, **kwargs
                 )
+            elif spec.kind == "list":
+                p.add_argument(spec.flag, dest=spec.name, action="append", **kwargs)
             else:
                 p.add_argument(spec.flag, dest=spec.name, **kwargs)
     return parser
@@ -181,7 +199,7 @@ def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tupl
     name = argv[0]
     tool = registry.get(name)
     if tool is None:
-        raise UnknownCommand(texts.message("parse.unknown_command", name=name), name)
+        raise unknown_command(registry, texts, name)
     parser = build_parser(registry, texts)
     try:
         namespace = parser.parse_args(list(argv))
@@ -200,17 +218,18 @@ def parse_command(registry: Registry, texts: Texts, argv: Sequence[str]) -> tupl
 
 
 def split_chat_line(line: str) -> list[str]:
-    """`-help settings` → `["help", "settings"]` (shlex rules)."""
+    """`/help settings` → `["help", "settings"]` (shlex rules; one leading `/` removed)."""
     import shlex
 
     tokens = shlex.split(line)
-    if tokens and tokens[0].startswith("-"):
-        tokens[0] = tokens[0].lstrip("-")
+    if tokens and tokens[0].startswith(COMMAND_PREFIX):
+        tokens[0] = tokens[0].removeprefix(COMMAND_PREFIX)
     return tokens
 
 
 __all__ = [
     "BUILTINS",
+    "COMMAND_PREFIX",
     "ParseError",
     "Registry",
     "Tool",
@@ -220,4 +239,5 @@ __all__ = [
     "field_specs",
     "parse_command",
     "split_chat_line",
+    "unknown_command",
 ]

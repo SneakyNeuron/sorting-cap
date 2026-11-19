@@ -41,3 +41,9 @@ def lenient_texts(monkeypatch):
 
     monkeypatch.setattr("app.tools.registry.has_message", lambda lang, key: True)
     monkeypatch.setattr(Texts, "message", message)
+
+
+@pytest.fixture(autouse=True)
+def no_retry_waits(monkeypatch):
+    """Transient-error retries of structured-output calls never sleep in tests."""
+    monkeypatch.setattr("app.providers.structured.default_sleep", lambda _seconds: None)

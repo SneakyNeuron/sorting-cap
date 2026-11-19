@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,89 @@ class FakeToolModel(GenericFakeChatModel):
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         self.received.append(list(messages))
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+@dataclass
+class RawReply:
+    """A queued `include_raw=True` reply: the raw message, the parsed value, the error."""
+
+    raw: Any = None
+    parsed: Any = None
+    parsing_error: BaseException | None = None
+
+
+class FakeStructuredModel(GenericFakeChatModel):
+    """A chat model whose `with_structured_output(schema)` returns queued replies.
+
+    Each queued reply is a Pydantic object or a dict (validated into the schema) that
+    the next structured call returns, an exception it raises, or a `RawReply`. With
+    `include_raw=True` the call returns `{"raw", "parsed", "parsing_error"}` like the
+    LangChain models do: a dict that fails validation and an `OutputParserException`
+    become `parsing_error` instead of being raised. `calls` records the messages of
+    every structured call, `options` the `method` / `include_raw` of every
+    `with_structured_output`; an empty queue fails the test.
+    """
+
+    queue: list = []
+    calls: list = []
+    schemas: list = []
+    options: list = []
+
+    def with_structured_output(self, schema, *, include_raw=False, **kwargs):
+        from langchain_core.exceptions import OutputParserException
+        from langchain_core.runnables import RunnableLambda
+        from pydantic import ValidationError
+
+        self.schemas.append(schema)
+        self.options.append({"method": kwargs.get("method"), "include_raw": include_raw})
+
+        def _plain(reply):
+            if isinstance(reply, RawReply):
+                if reply.parsing_error is not None:
+                    raise reply.parsing_error
+                return reply.parsed
+            if isinstance(reply, BaseException):
+                raise reply
+            if isinstance(reply, dict):
+                return schema.model_validate(reply)
+            return reply
+
+        def _raw(reply):
+            if isinstance(reply, RawReply):
+                return {
+                    "raw": reply.raw,
+                    "parsed": reply.parsed,
+                    "parsing_error": reply.parsing_error,
+                }
+            if isinstance(reply, OutputParserException):
+                return {"raw": AIMessage(str(reply)), "parsed": None, "parsing_error": reply}
+            if isinstance(reply, BaseException):
+                raise reply
+            if isinstance(reply, dict):
+                raw = AIMessage(json.dumps(reply))
+                try:
+                    parsed = schema.model_validate(reply)
+                except ValidationError as exc:
+                    error = OutputParserException(str(exc), llm_output=raw.content)
+                    return {"raw": raw, "parsed": None, "parsing_error": error}
+                return {"raw": raw, "parsed": parsed, "parsing_error": None}
+            raw = AIMessage(reply.model_dump_json() if hasattr(reply, "model_dump_json") else "")
+            return {"raw": raw, "parsed": reply, "parsing_error": None}
+
+        def _answer(messages):
+            self.calls.append(list(messages) if isinstance(messages, list) else messages)
+            if not self.queue:
+                raise AssertionError("unexpected structured-output call")
+            reply = self.queue.pop(0)
+            return _raw(reply) if include_raw else _plain(reply)
+
+        return RunnableLambda(_answer)
+
+
+def structured_model(*replies: Any) -> FakeStructuredModel:
+    return FakeStructuredModel(
+        messages=iter([]), queue=list(replies), calls=[], schemas=[], options=[]
+    )
 
 
 def fake_model(*replies: AIMessage | str) -> FakeToolModel:
@@ -121,7 +205,9 @@ def make_ctx(
     runner: FakeRunner | None = None,
     handler: Callable[[httpx.Request], httpx.Response] | None = None,
     env: dict | None = None,
+    model_factory=None,
 ) -> tuple[ToolContext, io.StringIO]:
+    from app.agent import default_model_factory
     from app.tools import default_registry
 
     con, buf = console()
@@ -134,8 +220,15 @@ def make_ctx(
         env=env if env is not None else {},
         runner_factory=lambda _ctx: runner,
         http_transport=httpx.MockTransport(handler) if handler else httpx.MockTransport(_refuse),
+        model_factory=model_factory or default_model_factory,
+        resolve_host=_no_dns,
     )
     return ctx, buf
+
+
+def _no_dns(host: str) -> list[str]:
+    """No real lookups in tests: every name is unresolved (treated as public)."""
+    return []
 
 
 def _refuse(request: httpx.Request) -> httpx.Response:

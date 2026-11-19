@@ -6,13 +6,20 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "cryptography>=50.0.2",
     "httpx>=0.28.1",
     "langchain>=1,<2",
     "langchain-deepseek>=1.2.0",
     "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.22,<2",
+    "llama-index-core>=0.14.26",
+    "llama-index-readers-file>=0.8.0",
+    "onnxruntime>=1.32.0",
     "prompt-toolkit>=3,<4",
     "pydantic>=2,<3",
     "rich>=15.0.0",
+    "tokenizers>=0.23.3",
 ]
 
 [project.scripts]
@@ -36,7 +43,10 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
-addopts = "--import-mode=importlib --disable-socket --allow-unix-socket"
+addopts = "--import-mode=importlib --disable-socket --allow-unix-socket -m 'not live'"
+markers = [
+    "live: opt-in evaluation against real models (run with `pytest -m live`); not run by default or in CI",
+]
 
 [dependency-groups]
 dev = [

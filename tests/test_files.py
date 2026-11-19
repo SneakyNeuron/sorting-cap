@@ -3,7 +3,7 @@ import stat
 import pytest
 
 from app import files
-from app.files import private_file, write_private
+from app.files import private_dir, private_file, write_private
 
 
 def test_write_private_creates_0600_and_replaces(workspace):
@@ -39,3 +39,28 @@ def test_private_file_creates_or_tightens_and_keeps_content(workspace):
     private_file(path)
     assert path.read_text() == "line\n"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_write_private_bytes(workspace):
+    path = workspace / "blob.bin"
+    write_private(path, b"\x00\xffraw")
+    assert path.read_bytes() == b"\x00\xffraw"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_private_dir_creates_or_tightens_0700(workspace):
+    path = workspace / "profile"
+    assert private_dir(path) == path
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700
+    path.chmod(0o755)
+    (path / "kept").write_text("x")
+    private_dir(path)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700 and (path / "kept").exists()
+
+
+def test_private_dir_not_exist_ok_refuses_existing(workspace):
+    path = workspace / "item"
+    private_dir(path, exist_ok=False)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o700
+    with pytest.raises(FileExistsError):
+        private_dir(path, exist_ok=False)

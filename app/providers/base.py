@@ -1,13 +1,14 @@
 """Provider interface and registry.
 
 A provider knows whether it can run here, sets itself up, verifies itself and
-builds a LangChain chat model from settings. `-setup`'s menu and
+builds a LangChain chat model from settings. `/setup`'s menu and
 `Settings.provider` validation both come from this registry.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -47,7 +48,7 @@ class Provider(ABC):
     name: str
     label_key: str
     key_name: str | None = None  # the credential (env var / `.env` name) this provider uses
-    # R9: preselected in the `-setup` menu when available; only local providers set it
+    # R9: preselected in the `/setup` menu when available; only local providers set it
     preselectable: bool = False
 
     @abstractmethod
@@ -67,7 +68,7 @@ class Provider(ABC):
         """Raise `SetupAborted` with the reason when the provider does not work.
 
         The default builds the chat model with `ctx.credentials` (which include
-        keys typed in this `-setup` run, not yet in `.env`) and runs the shared
+        keys typed in this `/setup` run, not yet in `.env`) and runs the shared
         chat-reply plus tool-call check.
         """
         from app.providers.verify import verify_chat_model
@@ -130,3 +131,11 @@ def get_provider(name: str) -> Provider:
         return _REGISTRY[name]
     except KeyError as exc:
         raise KeyError(f"unknown provider: {name!r}") from exc
+
+
+ModelFactory = Callable[["Settings", "Credentials"], "BaseChatModel"]
+
+
+def default_model_factory(settings: Settings, credentials: Credentials) -> BaseChatModel:
+    """The configured provider's chat model: what the chat agent and tools use by default."""
+    return get_provider(settings.provider).chat_model(settings, credentials)

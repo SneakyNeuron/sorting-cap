@@ -12,6 +12,7 @@ class SettingsInput(ToolInput):
     model: str | None = None
     ollama_base_url: str | None = None
     openai_base_url: str | None = None
+    guard_threshold: float | None = None
 
 
 class SettingsOutput(ToolOutput):

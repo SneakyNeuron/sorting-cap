@@ -127,3 +127,41 @@ def test_url_without_scheme_rejected(workspace):
     with pytest.raises(ToolError, match="ollama_base_url"):
         handle(ctx, SettingsInput(ollama_base_url="localhost:11434"))
     assert not (workspace / "settings.json").exists()
+
+
+def test_guard_threshold_shown(workspace):
+    ctx, buf = make_ctx(workspace)
+    out = handle(ctx, SettingsInput())
+    out.render(ctx)
+    assert out.settings["guard_threshold"] == 0.5
+    assert "guard_threshold" in buf.getvalue()
+
+
+def test_guard_threshold_headless_round_trip(workspace):
+    out = io.StringIO()
+    code = run_headless(["settings", "--guard-threshold", "0.7", "--json"], stdout=out)
+    assert code == 0
+    data = json.loads(out.getvalue())
+    assert data["settings"]["guard_threshold"] == 0.7
+    assert data["changed"] == ["guard_threshold"]
+    assert load_settings(workspace).guard_threshold == 0.7
+    out = io.StringIO()
+    assert run_headless(["settings", "--json"], stdout=out) == 0
+    assert json.loads(out.getvalue())["settings"]["guard_threshold"] == 0.7
+
+
+@pytest.mark.parametrize("value", ["0", "1", "1.2", "-0.5"])
+def test_guard_threshold_out_of_range_rejected(workspace, value):
+    err = io.StringIO()
+    code = run_headless(["settings", "--guard-threshold", value], stdout=io.StringIO(), stderr=err)
+    assert code == 1
+    assert "guard_threshold" in err.getvalue()
+    assert "0" in err.getvalue() and "1" in err.getvalue()
+    assert not (workspace / "settings.json").exists()
+
+
+def test_guard_threshold_not_a_number(workspace):
+    err = io.StringIO()
+    code = run_headless(["settings", "--guard-threshold", "high"], stdout=io.StringIO(), stderr=err)
+    assert code == 2
+    assert "čekám číslo" in err.getvalue()

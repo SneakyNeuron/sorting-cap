@@ -1,4 +1,5 @@
-"""`-setup` (user-only, chat-only): language, hardware, then a provider selection loop.
+"""`/setup` (user-only, chat-only): language, hardware, a provider selection loop, and
+after a verified provider the classifier download offer (declinable).
 
 The chosen provider runs its setup and verification; on failure or a declined
 step the user returns to the menu with the reason and can pick again or quit.
@@ -11,6 +12,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from app.errors import validation_message
+from app.guard import classifier
 from app.providers.base import Provider, SetupAborted, providers
 from app.providers.remote import save_pending_keys
 from app.schemas.setup import SetupInput, SetupOutput
@@ -86,6 +88,20 @@ def _show_tour_once(ctx: ToolContext) -> None:
     ctx.save_settings(ctx.settings.model_copy(update={"tour_shown": True}))
 
 
+def _offer_classifier(ctx: ToolContext) -> None:
+    """Final step after a verified setup: offer the classifier download (R8).
+
+    Declining or a failed download keeps setup successful.
+    """
+    if classifier.is_installed(ctx.workspace):
+        return
+    try:
+        if not classifier.offer_download(ctx):
+            ctx.say("setup.classifier_skipped")
+    except classifier.GuardUnavailable as exc:
+        ctx.console.print(exc.text(ctx.texts), style="red", highlight=False, markup=False)
+
+
 def handle(ctx: ToolContext, inputs: SetupInput) -> SetupOutput:
     try:
         return _run(ctx)
@@ -133,6 +149,7 @@ def _run(ctx: ToolContext) -> SetupOutput:
         ctx.save_settings(candidate)
         ctx.say("setup.verified", style="green")
         _show_tour_once(ctx)
+        _offer_classifier(ctx)
         return SetupOutput(completed=True, provider=candidate.provider, model=candidate.model)
 
 
