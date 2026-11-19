@@ -19,4 +19,8 @@ Requested by the developer on 2026-11-19 during Phase 2 validation. To be specif
 ## Constraints carried over from Phase 2
 - Guarded input (URLs, `.html`) still passes the injection guard before any text reaches the model; the conversation model never sees quarantined content.
 - Item status is stored in the workspace (not inferred by the LLM each turn); the merge rule (R13), the filter file (R14), `/show-profile` and the headless `--source` path keep working.
+- Paths and URLs detected in free messages are ingested through the existing Phase 2 sources module: the same 5 MiB caps (fetched and local `.html`/`.htm`) and the same injection guard.
+- The path/URL detection regex runs in linear time on untrusted text (no overlapping unbounded quantifiers) and gets a performance test on adversarial input (tech-stack Security rule).
+- Any structured LLM output (item status, next question) goes through `app/providers/structured.invoke_structured`, with a `Field(description=...)` on every field of its output schema (tech-stack Architecture rule).
+- Terminal tests (prompt_toolkit pipe input, keystrokes) wait on application or buffer state with a timeout, never on fixed sleeps (tech-stack Testing rule).
 - Reverses the Phase 2 decision "Questions: prewritten per item; the LLM only extracts" — the spec should say what remains as a fallback when the model fails, and how it behaves on small local models.

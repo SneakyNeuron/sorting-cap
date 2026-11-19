@@ -160,3 +160,42 @@ def test_tool_schemas_live_in_app_schemas():
     for tool in default_registry().tools():
         assert tool.input_model.__module__.startswith("app.schemas.")
         assert tool.output_model.__module__.startswith("app.schemas.")
+
+
+def _calls_attribute(tree: ast.AST, name: str) -> bool:
+    """Any `x.name(...)` call or `getattr(x, "name")` lookup."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == name:
+            return True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == name
+        ):
+            return True
+    return False
+
+
+def test_only_structured_helper_calls_with_structured_output():
+    """Structured LLM output goes through `app/providers/structured.py` (tech stack)."""
+    users = [
+        _rel(p)
+        for p in _modules()
+        if _calls_attribute(ast.parse(p.read_text()), "with_structured_output")
+    ]
+    assert users == ["app/providers/structured.py"]
+
+
+def test_structured_output_check_sees_every_form():
+    for source in (
+        "model.with_structured_output(S)",
+        "runnable = llm.with_structured_output",
+        "getattr(model, 'with_structured_output')(S)",
+    ):
+        assert _calls_attribute(ast.parse(source), "with_structured_output"), source
+    assert not _calls_attribute(
+        ast.parse("invoke_structured(m, S, [], t)"), "with_structured_output"
+    )
