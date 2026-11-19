@@ -27,6 +27,8 @@
 - The chat agent has access only to registered tools, never to a shell or arbitrary file system paths outside the workspace.
 - Prompts live as files in a single `prompts/` directory tree, organised per language (`cs`, `en`) and per agent; no prompt text inline in code. Output schemas live together in one schemas package.
 - LLM calls belong only in the chat agent, provider verification (`/setup`), and in extraction, filtering, research summarisation and letter steps; merging, dedupe, status changes and file layout are plain code.
+- Structured LLM output always goes through the shared helper `app/providers/structured.py`: strict schema mode where the provider supports it, a bounded retry that feeds the validation error back, a bounded retry on transient errors, and a `Field(description=...)` on every field of an output schema. No direct `with_structured_output` calls elsewhere.
+- Internal markers in user-facing generated files (such as the `profile-sha256` comment in the filter file) are stripped by every reader that shows the file to the user.
 - Letter generation is a LangGraph reflection loop: a seller agent drafts, a sceptical company agent pokes holes, a fact-checker verifies claims of both against the user's and the company's files via the LlamaIndex index; the loop ends on acceptance or an iteration cap.
 - Default letter skills ship with the app and are copied into the user's workspace, where the user edits them by hand or through the chat.
 
@@ -41,6 +43,7 @@
 ## Security
 - Every piece of web-sourced input (scraped listings, company pages, reviews, user-supplied URLs and HTML) passes the injection guard before it is stored, indexed or shown to an agent. Flagged content is stored only encrypted in quarantine (Fernet, key in `<workspace>/.env`, metadata-only report) and reported to the user; it reaches an agent, a source file or the index only after the user explicitly releases it in chat.
 - Agents that read untrusted text (filter, extraction) have no tools.
+- Every guarded input path has a size cap (fetched and local alike), and every regex or parser that runs over untrusted text works in linear time: no overlapping unbounded quantifiers, no rule × element loops without an index. Each new rule gets a performance test on adversarial input.
 - Scraper respects robots.txt, per-domain rate limits and identifies itself with a generic User-Agent.
 - No secrets in the repo; `.env` is git-ignored, `.env.example` documents variables.
 
@@ -55,11 +58,13 @@
 - Integration tests for every tool and graph, using LangChain fake chat models, recorded HTML fixtures and a temporary workspace; no network and no real model in the default test run.
 - Live-model evaluations (filter quality, letter quality, injection classifier) live in a separate, opt-in suite (`tests/live/`, pytest marker `live`, deselected by default through `addopts`; run with `uv run pytest -m live`) and are not required to pass in CI.
 - Tests live in `tests/`, mirroring the `app/` package layout, files named `test_*.py`.
-- A feature is not done until its tests pass offline, ruff is clean, and the specs describe the code.
+- Tests that drive the terminal (prompt_toolkit pipe input, keystrokes) wait on application or buffer state with a timeout, never on fixed sleeps.
+- A feature is not done until its tests pass offline, ruff and the typechecker are clean, and the specs describe the code.
 
 ## Quality tooling
 - Ruff for lint and format (`uv run ruff check`, `uv run ruff format`).
 - Tests: `uv run pytest`.
+- Typechecker: mypy (`uv run mypy app`), run in CI; added in phase 3. Until then the rule above applies to ruff and tests only.
 - CI (GitHub Actions) runs ruff and the offline pytest suite; added in phase 1.
 
 ## Constraints
