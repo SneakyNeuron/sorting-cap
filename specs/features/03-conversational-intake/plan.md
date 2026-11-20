@@ -83,6 +83,14 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] D19: `route` reads `goto` strictly
 - [x] Tests: `apply_changes` without origin, `failed_turn`, `handlers()` order equals `TOOL_NAMES`, quoted `find_files` folders, `route` without `goto` raises
 
+## Validation fixes (correctness)
+- [x] D1: `RoundContext.merged()` replays the round's events in order (`profile.merge_steps`); an answer settles only the conflicts raised before it; the `answer` event keeps its text
+- [x] D2: an empty reply after earlier text ends the turn as `reply` (after tool calls only, with the "go on" line); a failed turn prints its earlier text before the error; an `OSError` / `SourcesError` inside a tool handler fails the turn through `run_turn` itself, so its earlier text is printed and its calls counted
+- [x] D3: `allow_ingest` reads a typed bare `host/path` spec without a scheme as `https://` + spec with `bare_host`, unless it is path-like or a bare file name
+- [x] D4: the chat round's `ingest` does not pass `cv` to the sources module; `write` sets the manifest flag from `cv_slugs`
+- [x] D5: an `append` answer keeps the origins of source values already written to its item; a `replace` answer drops them
+- [x] Tests: answer then source (adds and contradicts) and source then answer (replace and append) agree across chat line, report, status and saved profile (round and graph); an empty reply after a text-and-call reply; tool calls then an empty reply; a model error after text; an `OSError` and a `SourcesError` inside a tool handler; a bare spec allowed as a URL with the local check, path-like and file-name specs staying paths; a cancelled round leaving the CV flag unset and `write` setting it for an added source
+
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
 - A message with 12 URLs → the first 10 ingested, the rest reported as skipped for the turn.

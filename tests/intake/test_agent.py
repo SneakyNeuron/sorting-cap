@@ -318,7 +318,7 @@ def test_find_files_result_confirmed_is_ingested(en, cwd):
     [(kind, question, _)] = prompter.asked
     assert kind == "confirm" and str(found) in question
     [entry] = load_manifest(en).sources
-    assert entry.cv is True
+    assert entry.cv is False and round_.manifest().sources[0].cv is True  # `write` sets it
     assert round_.status().items["cv"].state == "known"
 
 
@@ -367,7 +367,9 @@ def test_cv_true_on_a_duplicate_sets_the_flag(en, cwd):
     report = tool_results(outcome)[0]["report"]
     assert report["status"] == "skipped_duplicate" and report["cv"] is True
     assert report["states"] == {"cv": "known"}
-    assert load_manifest(en).sources[0].cv is True
+    # the round flags it; the manifest gets the flag only in `write` (D4)
+    assert load_manifest(en).sources[0].cv is False
+    assert round_.manifest().sources[0].cv is True
     assert round_.status().items["cv"].state == "known"
     assert reader.queue == []  # the duplicate was not read again
 
@@ -735,3 +737,188 @@ def test_chat_agent_tools_unchanged():
     names = [t.name for t in default_registry().agent_tools()]
     assert names == ["help", "tour", "show-profile"]
     assert not set(TOOL_NAMES) & {t.name for t in default_registry().tools()}
+
+
+# --- validation fixes (correctness) ---------------------------------------------------
+
+
+def cv_round(en, cwd, extraction, **kwargs):
+    (cwd / "cv.md").write_text("Go developer\n", encoding="utf-8")
+    round_, model, buf = setup(en, cwd, reader=structured_model(extraction), **kwargs)
+    round_.data.user_messages.append("skills Python; see ./cv.md")
+    return round_, model, buf
+
+
+def file_origin(en) -> str:
+    return f"file:{load_manifest(en).sources[0].slug}"
+
+
+def test_source_after_an_answer_adds_to_it(en, cwd):
+    # D1: the order answer → source; the chat line, the report, the status and the
+    # saved profile agree
+    extraction = Extraction(skills=ExtractedValue(text="Go", relation="adds"))
+    round_, _, _ = cv_round(en, cwd, extraction)
+    round_.record_item(RecordItemArgs(item_id="skills", text="Python"))
+    result, report = round_.ingest("./cv.md")
+    assert report.added_to == ["skills"] and report.conflicts == []
+    skills = EN.message("profile.item.skills.title")
+    assert f"added to {skills}" in round_.report_line(result, report)
+    doc, merged = round_.merged()
+    assert doc.body("skills") == "Python\n\nGo"
+    assert "skills" in merged.changed and merged.conflicts == []
+    status = round_.status().items["skills"]
+    assert status.state == "known"
+    assert status.origins == ["conversation", file_origin(en)]
+    assert report.states == {"skills": "known"}
+
+
+def test_contradicting_source_after_an_answer_stays_a_conflict(en, cwd):
+    # D1: a conflict reported in chat is not dropped from the summary
+    extraction = Extraction(skills=ExtractedValue(text="Java", relation="contradicts"))
+    round_, _, _ = cv_round(en, cwd, extraction)
+    round_.record_item(RecordItemArgs(item_id="skills", text="Python"))
+    result, report = round_.ingest("./cv.md")
+    assert report.conflicts == ["skills"]
+    skills = EN.message("profile.item.skills.title")
+    assert f"conflicts with {skills}" in round_.report_line(result, report)
+    doc, merged = round_.merged()
+    assert doc.body("skills") == "Python"
+    assert [(c.item_id, c.current, c.proposed) for c in merged.conflicts] == [
+        ("skills", "Python", "Java")
+    ]
+    assert round_.status().items["skills"].origins == ["conversation"]
+    # a later answer settles it
+    round_.record_item(RecordItemArgs(item_id="skills", text="Python, some Java"))
+    assert round_.merged()[1].conflicts == []
+
+
+def test_answer_after_a_source_replaces_it(en, cwd):
+    # D1: the order source → answer (replace); the source's origin goes with its text
+    round_, _, _ = cv_round(en, cwd, Extraction(skills=value("Go", gap="no years")))
+    _, report = round_.ingest("./cv.md")
+    assert report.filled == ["skills"]
+    round_.record_item(RecordItemArgs(item_id="skills", text="Python"))
+    doc, merged = round_.merged()
+    assert doc.body("skills") == "Python" and merged.conflicts == []
+    status = round_.status().items["skills"]
+    assert (status.state, status.note, status.origins) == ("known", None, ["conversation"])
+
+
+def test_appended_answer_keeps_the_source_origin(en, cwd):
+    # D5: the appended answer carries the source's text, so it keeps its origin
+    round_, _, _ = cv_round(en, cwd, Extraction(skills=value("Go", gap="no years")))
+    round_.ingest("./cv.md")
+    round_.record_item(RecordItemArgs(item_id="skills", text="Python", mode="append"))
+    assert round_.doc().body("skills") == "Go\n\nPython"
+    status = round_.status().items["skills"]
+    assert status.state == "known"
+    assert status.origins == [file_origin(en), "conversation"]
+    # a later replace drops the source's text and its origin
+    round_.record_item(RecordItemArgs(item_id="skills", text="Rust"))
+    assert round_.status().items["skills"].origins == ["conversation"]
+
+
+def test_text_of_an_earlier_reply_ends_the_turn_as_a_reply(en, cwd):
+    # D2: an empty reply after a text-and-call reply is not a failed turn
+    ask = tool_calls(
+        ("record_item", {"item_id": "skills", "text": "Go"}), text="Got it, and what salary?"
+    )
+    round_, model, buf = setup(en, cwd, ask, "")
+    outcome = turn(round_, model, "I know Go")
+    assert outcome.kind == "reply" and outcome.text == "Got it, and what salary?"
+    assert "Got it, and what salary?" in buf.getvalue()
+    # the history keeps the whole exchange, not only the user's message
+    assert isinstance(outcome.messages[0], HumanMessage) and len(outcome.messages) == 4
+
+
+def test_tool_calls_then_an_empty_reply_show_go_on(en, cwd):
+    # D2: the turn did its work (a tool call) but gave no text: not a failure
+    round_, model, buf = setup(
+        en, cwd, tool_call("record_item", {"item_id": "skills", "text": "Go"}), ""
+    )
+    outcome = turn(round_, model, "I know Go")
+    assert not outcome.failed
+    assert EN.message("intake.agent.go_on") in buf.getvalue()
+
+
+def test_failed_turn_still_prints_earlier_text(en, cwd):
+    # D2: a model error after a text-and-call reply prints the text before the error
+    ask = tool_calls(
+        ("record_item", {"item_id": "skills", "text": "Go"}), text="Got it, and what salary?"
+    )
+    round_, model, buf = setup(en, cwd, ask, RuntimeError("model exploded"))
+    outcome = turn(round_, model, "I know Go")
+    assert outcome.failed
+    out = buf.getvalue()
+    assert "Got it, and what salary?" in out
+    assert out.index("Got it, and what salary?") < out.index("model exploded")
+
+
+def test_bare_spec_without_scheme_is_fetched_with_the_local_check(en, cwd):
+    # D3: the agent passes the bare token as the user wrote it
+    requests: list[str] = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(200, content=PAGE.encode(), headers={"content-type": "text/html"})
+
+    def resolve(host):
+        return ["10.0.0.5"] if host == "intranet.firma.cz" else ["93.184.216.34"]
+
+    reader = structured_model(Extraction(locations=value("Brno")))
+    round_, _, _ = setup(en, cwd, reader=reader, handler=handler, resolve=resolve)
+    round_.data.user_messages.append("my firm: firma.cz/kariera, also intranet.firma.cz/jobs")
+    result = round_.ingest_source(IngestSourceArgs(spec="firma.cz/kariera"))
+    assert result.ok and result.report and result.report.status == "added"
+    assert result.spec == "https://firma.cz/kariera"
+    assert requests == ["https://firma.cz/kariera"]
+    local = round_.ingest_source(IngestSourceArgs(spec="intranet.firma.cz/jobs"))
+    assert (local.ok, local.refused) == (False, "local_host")
+
+
+def test_cv_flag_waits_for_write(en, cwd):
+    # D4: inside a chat round the manifest `cv` flag is not written at ingest time
+    (cwd / "cv.md").write_text("Jan Novák, developer\n", encoding="utf-8")
+    round_, _, _ = setup(en, cwd, reader=structured_model(Extraction(skills=value("Python"))))
+    round_.data.user_messages.append("my CV: ./cv.md")
+    result, report = round_.ingest("./cv.md", cv=True)
+    assert result.status == "added" and report.cv is True
+    assert load_manifest(en).sources[0].cv is False
+    assert round_.manifest().sources[0].cv is True
+    assert round_.status().items["cv"].state == "known"
+    _, again = round_.ingest("./cv.md", cv=True)
+    assert again.cv is True and load_manifest(en).sources[0].cv is False
+
+
+def test_os_error_in_a_tool_prints_earlier_text_and_counts_calls(en, cwd, monkeypatch):
+    # D2: a file error inside a handler fails the turn through `run_turn` itself, so
+    # the text the agent gave before is shown and the calls made are counted
+    def broken(*_a, **_k):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr("app.intake.round.find_files", broken)
+    ask = tool_calls(
+        ("record_item", {"item_id": "skills", "text": "Go"}), text="Noted, let me look."
+    )
+    find = tool_call("find_files", {"name": "cv", "folder": "~/Downloads"})
+    round_, model, buf = setup(en, cwd, ask, find)
+    outcome = turn(round_, model, "I know Go; my CV is in Downloads")
+    assert outcome.failed and outcome.tool_calls == 2
+    assert [type(m) for m in outcome.messages] == [HumanMessage]
+    out = buf.getvalue()
+    assert out.index("Noted, let me look.") < out.index("Input/output error")
+    assert round_.doc().body("skills") == "Go"  # recorded before the failure
+
+
+def test_sources_error_in_a_tool_is_a_failed_turn(en, cwd, monkeypatch):
+    from app.intake.sources import SourcesError
+
+    def broken(*_a, **_k):
+        raise SourcesError("sources.manifest_invalid", path="manifest.json", detail="bad JSON")
+
+    monkeypatch.setattr("app.intake.round.find_files", broken)
+    round_, model, buf = setup(en, cwd, tool_call("find_files", {"name": "cv"}))
+    outcome = turn(round_, model, "find my cv")
+    assert outcome.failed and outcome.tool_calls == 1
+    assert "The model did not manage this turn" in buf.getvalue()
+    assert "manifest.json" in (outcome.error or "")

@@ -11,9 +11,13 @@ turn reaches `MAX_TOOL_CALLS` (then the turn ends with the text it gave, or the
 localized "go on" line; not a failure). A tool call with invalid arguments (or an
 unknown tool) gets the validation error as its tool message; the model is called
 again once, and a second invalid call fails the turn. A model error (after the
-transient retries of `app/providers/structured.py`) or an empty reply also fails it.
-Text from the model is printed as plain text, controls escaped; a failed turn prints
-a short localized error and keeps everything recorded so far.
+transient retries of `app/providers/structured.py`) also fails it, and so does an
+empty reply when the turn gave no text and made no tool call. An empty reply after
+earlier text ends the turn with that text; after tool calls only, with the "go on"
+line. An `OSError` or a manifest error (`SourcesError`) inside a tool handler fails
+the turn too. Text from the model is printed as plain text, controls escaped; a
+failed turn prints the text it gave so far, then a short localized error, and keeps
+everything recorded so far.
 
 The model's input (T5): the `intake/agent` prompt, the round's history capped at about
 `HISTORY_LIMIT` messages (cut only before a user message, so a tool message never
@@ -31,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import ValidationError
 
 from app.intake.round import TOOL_NAMES
+from app.intake.sources import SourcesError
 from app.messages import message_text, say, short_error
 from app.providers import structured
 from app.providers.structured import TRANSIENT_ATTEMPTS, TRANSIENT_DELAYS, is_transient
@@ -182,11 +187,13 @@ def run_turn(
     retried = False
 
     def fail(error: str) -> TurnOutcome:
+        if texts:  # the user still sees what the agent said before the failure
+            say(ctx.console, "\n\n".join(texts))
         return failed_turn(ctx, user_message, error, tool_calls=calls)
 
     def end(kind: TurnKind) -> TurnOutcome:
         text = "\n\n".join(texts)
-        if kind == "capped" and not text:
+        if not text and calls:  # the cap, or an empty reply after tool calls only
             text = ctx.msg("intake.agent.go_on")
         if text:
             say(ctx.console, text)
@@ -212,7 +219,7 @@ def run_turn(
             for c in reply.invalid_tool_calls
         ]
         if not requests:
-            return end("reply") if text else fail("empty reply")
+            return end("reply") if texts or calls else fail("empty reply")
         invalid = False
         stop: TurnKind | None = None
         for call_id, name, args, parse_error in requests:
@@ -236,7 +243,15 @@ def run_turn(
                     invalid = True
                     content = _invalid(str(exc))
                 else:
-                    content = handler(parsed).model_dump_json()
+                    try:
+                        content = handler(parsed).model_dump_json()
+                    except (OSError, SourcesError) as exc:  # a file or manifest error
+                        detail = (
+                            exc.text(ctx.texts)
+                            if isinstance(exc, SourcesError)
+                            else short_error(exc)
+                        )
+                        return fail(detail)
             turn.append(ToolMessage(content, tool_call_id=call_id, name=name))
             if round_.data.finished:
                 stop = "finished"

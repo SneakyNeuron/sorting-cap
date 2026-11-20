@@ -7,8 +7,9 @@ comment (or a second section with an id already seen) is an unknown section, kep
 verbatim after the known section it followed. The CV section is always rendered from
 the manifest (links to the sources flagged `cv`); hand edits to it are overwritten.
 
-Merge rule (R13), per round: a direct answer (Phase 3 `record_item`) replaces the item;
-text from sources fills empty items only. For a filled item the
+Merge rule (R13), per round, applied in the order things happened (`merge_steps`): a
+direct answer (Phase 3 `record_item`) replaces the item; text from sources fills empty
+items only. For a filled item the
 extraction's relation decides: `match` is ignored, `adds` is appended as a new
 paragraph, `contradicts` leaves the item as is and is reported as a conflict. Every
 text the merge writes into a body goes through `safe_body` first, so an answer or an
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.errors import LocalizedError
@@ -207,6 +209,14 @@ def _set(doc: ProfileDoc, item_id: ItemId, body: str, texts: Texts | None) -> No
         section.body = body
 
 
+@dataclass(frozen=True)
+class Answer:
+    """A direct answer (Phase 3 `record_item`): `text` replaces the item's body."""
+
+    item_id: ItemId
+    text: str
+
+
 def merge(
     doc: ProfileDoc,
     *,
@@ -216,16 +226,44 @@ def merge(
 ) -> tuple[ProfileDoc, MergeResult]:
     """Apply one round to a copy of `doc`; `doc` itself is not changed.
 
-    Source `updates` are applied first, in order, each against the profile as updated
-    so far; then `answers` (item id → direct answer, `record_item`) replace their
-    items, and conflicts about an answered item are dropped (the answer settles it).
-    Empty texts and the CV item (rendered from the manifest) are ignored. A filled
-    item with no relation is a conflict unless the text is the same as the item's.
+    Source `updates` are applied first, in order, then `answers` (item id → direct
+    answer) replace their items and settle the conflicts about them. `merge_steps`
+    with the updates followed by the answers."""
+    steps: list[ItemUpdate | Answer] = list(updates)
+    steps += [Answer(item_id, text) for item_id, text in (answers or {}).items()]
+    return merge_steps(doc, steps, texts=texts)
+
+
+def merge_steps(
+    doc: ProfileDoc,
+    steps: Iterable[ItemUpdate | Answer],
+    *,
+    texts: Texts | None = None,
+) -> tuple[ProfileDoc, MergeResult]:
+    """Apply source updates and direct answers to a copy of `doc` in the order given,
+    each against the profile as updated so far; `doc` itself is not changed.
+
+    An update fills an empty item; for a filled item `match` (or the same text) is
+    ignored, `adds` is appended as a paragraph, and `contradicts` (or no relation)
+    leaves the item as is and is a conflict. An answer replaces its item and settles
+    the conflicts raised about it so far; a later update can still conflict with it.
+    `MergeResult.applied` holds the positions, among the updates only, of the updates
+    written. Empty texts and the CV item (rendered from the manifest) are ignored.
     """
     new = doc.model_copy(deep=True)
     conflicts: list[Conflict] = []
     applied: list[int] = []
-    for index, update in enumerate(updates):
+    index = -1
+    for step in steps:
+        if isinstance(step, Answer):
+            text = safe_body(step.text.strip())
+            if not text or step.item_id == CV_ITEM or not is_item_id(step.item_id):
+                continue
+            _set(new, step.item_id, text, texts)
+            conflicts = [c for c in conflicts if c.item_id != step.item_id]
+            continue
+        index += 1
+        update = step
         text = safe_body(update.text.strip())
         if not text or update.item_id == CV_ITEM:
             continue
@@ -245,16 +283,5 @@ def merge(
                     item_id=update.item_id, current=current, proposed=text, origin=update.origin
                 )
             )
-    answered: set[str] = set()
-    for item_id, answer in (answers or {}).items():
-        text = safe_body(answer.strip())
-        if not text or item_id == CV_ITEM or not is_item_id(item_id):
-            continue
-        _set(new, item_id, text, texts)
-        answered.add(item_id)
     changed = [i.id for i in ITEMS if new.body(i.id).strip() != doc.body(i.id).strip()]
-    return new, MergeResult(
-        changed=changed,
-        applied=applied,
-        conflicts=[c for c in conflicts if c.item_id not in answered],
-    )
+    return new, MergeResult(changed=changed, applied=applied, conflicts=conflicts)

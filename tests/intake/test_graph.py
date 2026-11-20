@@ -737,3 +737,85 @@ def test_route_needs_goto():
     assert route({"goto": "listen"}) == "listen"
     with pytest.raises(KeyError):
         route({})
+
+
+# --- validation fixes (correctness) ---------------------------------------------------
+
+
+def test_cv_given_after_a_fact_is_saved_with_both(en, cwd):
+    # D1: answer first, then a source that adds to it; the chat line, the summary,
+    # `profile.md` and `checklist.json` agree
+    (cwd / "cv.md").write_text("Go developer\n", encoding="utf-8")
+    reader = structured_model(
+        Extraction(
+            skills=value("Go", relation="adds"),
+            languages=value("German", relation="contradicts"),
+        )
+    )
+    ctx, _, _, buf = chat(
+        en,
+        "I know Python and speak English",
+        "my CV: ./cv.md",
+        "done",
+        script=(
+            "Hi!",
+            tool_calls(
+                ("record_item", {"item_id": "skills", "text": "Python"}),
+                ("record_item", {"item_id": "languages", "text": "English"}),
+            ),
+            "Noted. Any CV?",
+            "Thanks.",
+        ),
+        reader=reader,
+    )
+    result = run(ctx, cwd)
+    doc = load_profile(en)
+    assert doc.body("skills") == "Python\n\nGo"
+    assert doc.body("languages") == "English"
+    skills = EN.message("profile.item.skills.title")
+    languages = EN.message("profile.item.languages.title")
+    text = text_of(buf)
+    assert f"added to {skills}" in text and f"conflicts with {languages}" in text
+    assert [c.item_id for c in result.conflicts] == ["languages"]
+    slug = load_manifest(en).sources[0].slug
+    assert status_file(en)["skills"]["origins"] == ["conversation", f"file:{slug}"]
+    assert status_file(en)["languages"]["origins"] == ["conversation"]
+
+
+def test_cv_flag_of_a_cancelled_round_is_not_kept(en, cwd):
+    # D4: Ctrl-C after `ingest_source(cv=true)` leaves the manifest flag unset
+    (cwd / "cv.md").write_text("Jan Novák\n", encoding="utf-8")
+    ctx, _, _, _ = chat(
+        en,
+        "this is my CV: ./cv.md",
+        KeyboardInterrupt(),
+        script=(
+            "Hi!",
+            tool_call("ingest_source", {"spec": "./cv.md", "cv": True}),
+            "Taken as your CV.",
+        ),
+        reader=structured_model(Extraction(skills=value("Python"))),
+    )
+    result = run(ctx, cwd)
+    assert result.cancelled
+    assert load_manifest(en).sources[0].cv is False
+
+
+def test_cv_flag_of_an_added_source_is_written_at_the_end(en, cwd):
+    # D4: `write` persists the flag of a source the agent ingested as the CV
+    (cwd / "cv.md").write_text("Jan Novák\n", encoding="utf-8")
+    ctx, _, _, _ = chat(
+        en,
+        "my CV is cv.md",
+        "done",
+        script=(
+            "Hi!",
+            tool_call("ingest_source", {"spec": "cv.md", "cv": True}),
+            "Taken as your CV.",
+        ),
+        reader=structured_model(Extraction(skills=value("Python"))),
+    )
+    result = run(ctx, cwd)
+    assert not result.cancelled and "cv" in result.changed
+    assert load_manifest(en).sources[0].cv is True
+    assert status_file(en)["cv"]["state"] == "known"

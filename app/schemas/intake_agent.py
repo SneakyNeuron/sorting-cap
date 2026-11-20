@@ -173,9 +173,10 @@ EventKind = Literal["update", "answer", "mark", "cv"]
 
 
 class RoundEvent(BaseModel):
-    """One thing the round learned, in order, for the checklist status: a source value
-    (`update`, `index` into `RoundData.updates`), a direct answer, a `mark_status`, or
-    a source flagged as the CV (`origin` its `file:`/`web:` origin)."""
+    """One thing the round learned, in order, for the merge and the checklist status:
+    a source value (`update`, `index` into `RoundData.updates`), a direct answer
+    (`answer`, `text` the item's whole new value, `mode` as `record_item` got it), a
+    `mark_status`, or a source flagged as the CV (`origin` its `file:`/`web:` origin)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -185,17 +186,20 @@ class RoundEvent(BaseModel):
     state: SetState | None = None
     note: str | None = None
     origin: str | None = None
+    text: str | None = None
+    mode: Literal["replace", "append"] | None = None
 
 
 class RoundData(BaseModel):
     """One conversational round's state, plain JSON (Phase 3 T3, T5).
 
     `base` is `profile.md` as read at the start and `started` the reconciled status
-    then; nothing is written before the round ends. `answers` are direct answers
-    (item id → value, replacing the item); `updates` fill-only source values;
-    `events` the order in which the status learned things. `user_messages` and
-    `found` feed the `ingest_source` allow rule (T7). `reports` are the source reports
-    not yet shown to the agent (the next context message carries them).
+    then; nothing is written before the round ends. `answers` are the latest direct
+    answer per item (item id → value); `updates` fill-only source values; `events`
+    the order in which things were learned, which the merge and the status replay.
+    `user_messages` and `found` feed the `ingest_source` allow rule (T7). `reports`
+    are the source reports not yet shown to the agent (the next context message
+    carries them).
     """
 
     model_config = ConfigDict(extra="forbid")

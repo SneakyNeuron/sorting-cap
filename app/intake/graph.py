@@ -157,7 +157,8 @@ class IntakeNodes:
     def agent(self, state: RoundState) -> dict[str, Any]:
         """One agent turn. A failed turn (R11) keeps everything recorded and gives the
         source reports it consumed back to the next turn; an `OSError` or a manifest
-        error inside a tool counts as a failed turn. Ctrl-D at a confirmation inside
+        error inside a tool fails the turn in `run_turn`, and one outside the tools
+        (building the context message) counts as a failed turn here. Ctrl-D at a confirmation inside
         the turn ends and saves the round, keeping what the turn recorded."""
         from langchain_core.messages import messages_from_dict, messages_to_dict
 

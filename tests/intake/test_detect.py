@@ -284,3 +284,47 @@ def test_unbracketed_ipv6_bare_token_is_not_a_typed_host(token):
     result = verdict(f"http://{token}", [f"see {token}"])
     assert result.decision == "refused"
     assert result.reason == "url_not_typed"
+
+
+# --- validation fix D3: a bare `host/path` spec without a scheme ---------------------
+
+
+def test_bare_spec_typed_as_bare_token_is_a_bare_host_url():
+    # R6's own example passed as the user wrote it, without `https://`
+    result = verdict("firma.cz/kariera", ["moje firma.cz/kariera, díky"])
+    assert (result.decision, result.kind, result.spec, result.bare_host) == (
+        "allowed",
+        "url",
+        "https://firma.cz/kariera",
+        True,
+    )
+    assert verdict("firma.cz/kariera).", ["firma.cz/kariera"]).spec == "https://firma.cz/kariera"
+    assert verdict("firma.cz/cv.pdf", ["see firma.cz/cv.pdf"]).kind == "url"
+    host_only = verdict("firma.cz", ["see firma.cz"])
+    assert (host_only.kind, host_only.spec, host_only.bare_host) == (
+        "url",
+        "https://firma.cz",
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        ("cv.pdf", "my cv.pdf"),  # a bare file name stays a path
+        ("README.md", "see README.md"),
+        ("docs/cv.pdf", "see docs/cv.pdf"),  # no dot in the first segment
+        ("./firma.cz/kariera", "firma.cz/kariera"),  # path-like prefixes
+        ("../firma.cz/kariera", "firma.cz/kariera"),
+        ("/firma.cz/kariera", "firma.cz/kariera"),
+        ("~/firma.cz/kariera", "firma.cz/kariera"),
+    ],
+)
+def test_path_like_or_file_name_spec_stays_a_path(spec, message):
+    result = verdict(spec, [message])
+    assert result.kind == "path" and result.bare_host is False
+
+
+def test_bare_spec_not_typed_is_refused():
+    assert verdict("firma.cz/kariera", ["hello"]).decision == "refused"
+    assert verdict("10.1/x", ["10.1/x"]).kind == "path"  # an address is never a bare host

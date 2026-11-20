@@ -7,7 +7,8 @@ five in-round tools (Phase 3 R6–R9, R18, T4, T5, T7).
 they are ingested (as in Phase 2), and their values are only collected.
 
 - `record_item` is a direct answer (Phase 2 R13): `replace` sets the item's value,
-  `append` adds a paragraph to the current one; it settles conflicts on that item.
+  `append` adds a paragraph to the current one; it settles the conflicts raised on
+  that item before it.
   The CV item is refused: it is satisfied by a source flagged `cv`.
 - `mark_status` sets `partial` (with a hole note) or `known` on a filled item.
 - `ingest_source` runs the allow rule (T7) before any file read or fetch; a URL
@@ -15,11 +16,15 @@ they are ingested (as in Phase 2), and their values are only collected.
   (loopback, private, link-local, as for redirects); a `find_files` result needs a
   yes/no confirmation run here, default no. Then the source goes through the Phase 2
   sources module and the toolless reader; the agent gets a `SourceReport`, never the
-  text. `cv=true` on a source already stored flags it as the CV.
+  text. `cv=true` (also on a source already stored) flags it as the CV for the
+  round; the manifest flag is written only by `write`.
 - `find_files` searches by name (T11); its results are kept for the allow rule.
 - `finish` ends the round.
 
-`status()` is the checklist status as it would be saved if the round ended now; the
+`merged()` replays the round's answers and source values in the order they happened,
+so a source read after an answer adds to it (or conflicts with it), and an answer
+replaces what a source wrote before it. `status()` is the checklist status as it
+would be saved if the round ended now; the
 context message (`context_payload`) shows it to the agent with each value cut at
 `VALUE_LIMIT` characters (T5).
 """
@@ -38,7 +43,7 @@ from app.intake.checklist import CV_ITEM, ITEMS
 from app.intake.detect import allow_ingest
 from app.intake.extract import CHAR_BUDGET, extract, to_updates
 from app.intake.find import find_files
-from app.intake.profile import is_filled, item_body, load_profile, merge
+from app.intake.profile import Answer, is_filled, item_body, load_profile, merge, merge_steps
 from app.intake.sources import (
     ingest_source,
     is_local_host,
@@ -71,7 +76,7 @@ from app.schemas.intake_agent import (
     RoundEvent,
     SourceReport,
 )
-from app.schemas.profile import ItemId, MergeResult, ProfileDoc
+from app.schemas.profile import ItemId, ItemUpdate, MergeResult, ProfileDoc
 from app.schemas.sources import Manifest, ManifestEntry, SourceResult
 
 if TYPE_CHECKING:
@@ -143,13 +148,23 @@ class RoundContext:
 
     def merged(self) -> tuple[ProfileDoc, MergeResult]:
         """The round's one merge of the direct answers and source values into the base
-        profile: what `write` saves and what the status and context are computed from."""
-        return merge(
-            self.data.base,
-            answers=self.data.answers,
-            updates=self.data.updates,
-            texts=self.ctx.texts,
-        )
+        profile, replayed in event order: what `write` saves and what the status and
+        context are computed from. `MergeResult.applied` holds `RoundData.updates`
+        indexes."""
+        steps: list[ItemUpdate | Answer] = []
+        order: list[int] = []  # the `updates` index of each update step
+        for event in self.data.events:
+            if event.kind == "update" and event.index is not None:
+                steps.append(self.data.updates[event.index])
+                order.append(event.index)
+            elif event.kind == "answer":
+                text = event.text
+                if text is None:
+                    text = self.data.answers.get(event.item_id, "")
+                steps.append(Answer(event.item_id, text))
+        doc, result = merge_steps(self.data.base, steps, texts=self.ctx.texts)
+        result.applied = [order[i] for i in result.applied]
+        return doc, result
 
     def doc(self) -> ProfileDoc:
         """The profile as it would be if the round ended now."""
@@ -167,14 +182,19 @@ class RoundContext:
         """The status as it would be saved now: what the round learned, in order, applied
         to the status at the start, then reconciled with the profile (R4, R7, R9).
 
-        A source value counts only when the merge wrote it and its item has no direct
-        answer (the answer replaces it); a direct answer makes its item `known` from
-        `conversation`; `mark_status` sets state and note and keeps the origins."""
+        A source value counts only when the merge wrote it and no later `replace`
+        answer on its item dropped it (an `append` answer keeps its text, so its
+        origin stays); a direct answer makes its item `known` from `conversation`;
+        `mark_status` sets state and note and keeps the origins."""
         now = now or now_utc()
         doc, merged = self.merged()
         applied = set(merged.applied)
+        replaced: dict[str, int] = {}  # item id → position of its last `replace` answer
+        for position, event in enumerate(self.data.events):
+            if event.kind == "answer" and event.mode != "append":
+                replaced[event.item_id] = position
         status = self.data.started.model_copy(deep=True)
-        for event in self.data.events:
+        for position, event in enumerate(self.data.events):
             change: StatusChange | None = None
             if event.kind == "mark":
                 change = StatusChange(
@@ -182,7 +202,7 @@ class RoundContext:
                 )
             elif event.kind == "update" and event.index is not None:
                 update = self.data.updates[event.index]
-                if event.index in applied and update.item_id not in self.data.answers:
+                if event.index in applied and replaced.get(update.item_id, -1) < position:
                     change = StatusChange(
                         item_id=update.item_id,
                         state="partial" if update.gap else "known",
@@ -287,8 +307,9 @@ class RoundContext:
     def ingest(self, spec: str, *, cv: bool = False) -> tuple[SourceResult, SourceReport]:
         """Ingest one source through the Phase 2 sources module (guard, store, manifest,
         dedupe), read it when added, and report it (R5, R7). `cv` flags it as the CV,
-        also when it is already stored (R6)."""
-        result = ingest_source(self.ctx, spec, cwd=self.cwd, cv=cv, scorer=self.scorer)
+        also when it is already stored (R6); the flag goes into `cv_slugs`, and only
+        `write` sets it in the manifest, so a cancelled round leaves it unset (R10)."""
+        result = ingest_source(self.ctx, spec, cwd=self.cwd, scorer=self.scorer)
         self.data.sources.append(result)
         report = SourceReport(origin=result.origin, status=result.status, error=result.code)
         entry = load_manifest(self.ctx.workspace).by_slug(result.slug) if result.slug else None
@@ -361,7 +382,9 @@ class RoundContext:
             current = self.doc().body(args.item_id).strip()
             text = f"{current}\n\n{text}" if current else text
         self.data.answers[args.item_id] = text
-        self.data.events.append(RoundEvent(kind="answer", item_id=args.item_id))
+        self.data.events.append(
+            RoundEvent(kind="answer", item_id=args.item_id, text=text, mode=args.mode)
+        )
         return RecordItemResult(ok=True, item_id=args.item_id)
 
     def mark_status(self, args: MarkStatusArgs) -> MarkStatusResult:

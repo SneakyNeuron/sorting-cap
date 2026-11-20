@@ -344,7 +344,10 @@ def allow_ingest(
 
     URLs: allowed when typed (compared without scheme; a bare `host/path` token with a
     dot counts when its host is a name, not an address, and the verdict then carries
-    `bare_host`); the returned URL has trailing punctuation removed. Paths: allowed
+    `bare_host`); the returned URL has trailing punctuation removed. A spec without a
+    scheme that matches such a bare token is read as `https://` + spec with
+    `bare_host`, unless it is path-like (`/`, `~`, `./`, `../`), its first segment has
+    no dot, or it is a bare file name of a supported type (`cv.pdf`). Paths: allowed
     when typed as given (after `~` expansion) or by file name (case-sensitive); a
     `find_files` result needs the user's confirmation.
     Everything else is refused. Reads no file and fetches nothing."""
@@ -357,6 +360,10 @@ def allow_ingest(
     if not spec:
         return Verdict("refused", spec, kind, "empty")
     typed = _typed(messages, home)
+    if not is_url and _is_bare_url_spec(spec) and _url_key(spec) in typed.bare_urls:
+        url = "https://" + spec.rstrip(TRAILING)
+        if "@" not in _netloc(url):
+            return Verdict("allowed", url, "url", bare_host=True)
     if is_url:
         spec = spec.rstrip(TRAILING)
         if "@" not in _netloc(spec):
@@ -373,6 +380,21 @@ def allow_ingest(
     if expanded in set(found):
         return Verdict("confirm", expanded, kind)
     return Verdict("refused", spec, kind, "path_not_typed")
+
+
+def _is_bare_url_spec(spec: str) -> bool:
+    """`spec`, given without a scheme, reads as a bare `host/path` link: not path-like
+    (`/`, `~`, `./`, `../`), a dot in its first segment, and not a bare file name of a
+    supported type (`cv.pdf` stays a path; `firma.cz/cv.pdf` is a link)."""
+    if spec.startswith(("/", "~", "./", "../")):
+        return False
+    text = spec.rstrip(TRAILING)
+    host = text
+    for sep in "/?#":
+        host = host.split(sep, 1)[0]
+    if "." not in host:
+        return False
+    return host != text or not _has_extension(text)
 
 
 def _netloc(url: str) -> str:
