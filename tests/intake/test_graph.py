@@ -819,3 +819,32 @@ def test_cv_flag_of_an_added_source_is_written_at_the_end(en, cwd):
     assert not result.cancelled and "cv" in result.changed
     assert load_manifest(en).sources[0].cv is True
     assert status_file(en)["cv"]["state"] == "known"
+
+
+# --- validation fix D6 (security): detected paths stay paths --------------------------
+
+
+def test_detected_path_in_a_dotted_folder_flagged_as_cv_stays_a_path(en, cwd):
+    folder = cwd / "project.v2"
+    folder.mkdir()
+    (folder / "cv.md").write_text("Python developer\n", encoding="utf-8")
+
+    def no_http(request):
+        raise AssertionError(f"fetched {request.url}")
+
+    reader = structured_model(Extraction(skills=value("Python")))
+    ctx, model, _, _ = chat(
+        en,
+        "my CV is project.v2/cv.md",
+        "done",
+        script=(
+            "Hi!",
+            tool_call("ingest_source", {"spec": "project.v2/cv.md", "cv": True}),
+            "Taken as your CV.",
+        ),
+        reader=reader,
+        handler=no_http,
+    )
+    run(ctx, cwd)
+    [entry] = load_manifest(en).sources
+    assert entry.type == "md" and entry.cv is True

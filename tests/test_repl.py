@@ -646,3 +646,26 @@ def test_broken_settings_reported_in_default_language(workspace, registry):
     text = buf.getvalue().replace("\n", " ")
     assert text.count("není platný JSON (řádek 1, sloupec 2)") == 2
     assert SEEN == []
+
+
+def test_add_information_conversation_not_in_history(workspace, monkeypatch, lenient_texts):
+    # Phase 3 R15 / V10 (validation fix D11): an intake message reaches the intake
+    # agent, but neither the REPL's `.history` nor the chat agent's history
+    from helpers import intake_model
+
+    monkeypatch.setattr("app.intake.graph.needs_filter", lambda *_a, **_k: False)
+    secret = "my-cat-is-called-QWERTY-PURR"
+    model = intake_model("Hi! What roles are you after?", "Noted.")
+    settings = Settings(language="en", provider="ollama", model="m")
+    with repl_session(workspace, model=model, settings=settings) as (repl, inp, buf):
+        inp.send_text(f"/add-information\rI like backend work, {secret}\rdone\r/exit\r")
+        inp.close()
+        assert repl.run() == 0
+        chat_history = repl.agent.history
+    assert any(secret in str(m.content) for call in model.received for m in call)
+    assert secret not in (workspace / ".history").read_text()
+    assert "/add-information" in (workspace / ".history").read_text()
+    assert all(secret not in str(getattr(m, "content", m)) for m in chat_history)
+    for path in workspace.rglob("*"):
+        if path.is_file():
+            assert secret.encode() not in path.read_bytes(), path

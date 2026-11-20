@@ -14,11 +14,13 @@ they are ingested (as in Phase 2), and their values are only collected.
 - `ingest_source` runs the allow rule (T7) before any file read or fetch; a URL
   allowed only through a bare `host/path` token is refused when its host is local
   (loopback, private, link-local, as for redirects); a `find_files` result needs a
-  yes/no confirmation run here, default no. Then the source goes through the Phase 2
+  yes/no confirmation run here, default no, as does a path matched only by its file
+  name. Then the source goes through the Phase 2
   sources module and the toolless reader; the agent gets a `SourceReport`, never the
   text. `cv=true` (also on a source already stored) flags it as the CV for the
   round; the manifest flag is written only by `write`.
-- `find_files` searches by name (T11); its results are kept for the allow rule.
+- `find_files` searches by name (T11) in a folder only when the user typed it (or it
+  is a default root); its results are kept for the allow rule.
 - `finish` ends the round.
 
 `merged()` replays the round's answers and source values in the order they happened,
@@ -40,9 +42,9 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from app.intake.checklist import CV_ITEM, ITEMS
-from app.intake.detect import allow_ingest
+from app.intake.detect import allow_folder, allow_ingest
 from app.intake.extract import CHAR_BUDGET, extract, to_updates
-from app.intake.find import find_files
+from app.intake.find import default_roots, find_files
 from app.intake.profile import Answer, is_filled, item_body, load_profile, merge, merge_steps
 from app.intake.sources import (
     ingest_source,
@@ -400,7 +402,14 @@ class RoundContext:
         # the agent saw `find_files` paths with controls escaped; map them back
         shown = {escape_controls(p): p for p in self.data.found}
         spec = shown.get(args.spec.strip(), args.spec)
-        verdict = allow_ingest(spec, self.data.user_messages, self.data.found, home=self.home)
+        verdict = allow_ingest(
+            spec,
+            self.data.user_messages,
+            self.data.found,
+            home=self.home,
+            cwd=self.cwd or Path.cwd(),
+            detected=self.data.detected,
+        )
         if verdict.decision == "refused":
             return IngestSourceResult(ok=False, spec=args.spec, refused=verdict.reason)
         if verdict.kind == "url" and verdict.bare_host:
@@ -422,6 +431,17 @@ class RoundContext:
 
     def find_files(self, args: FindFilesArgs) -> FindFilesResult:
         cwd = self.cwd or Path.cwd()
+        if args.folder is not None:
+            home = self.home if self.home is not None else Path.home()
+            if not allow_folder(
+                args.folder,
+                self.data.user_messages,
+                home=home,
+                cwd=cwd,
+                detected=self.data.detected,
+                roots=default_roots(cwd, home),
+            ):
+                return FindFilesResult(error="folder_not_typed")
         found = find_files(
             args.name, args.folder, cwd=cwd, workspace=self.ctx.workspace, home=self.home
         )

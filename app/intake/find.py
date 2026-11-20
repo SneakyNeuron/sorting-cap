@@ -32,7 +32,14 @@ MAX_ENTRIES = 5000
 MAX_RESULTS = 20
 HOME_FOLDERS = ("Downloads", "Documents", "Desktop")
 
-FindError = Literal["empty_name", "not_found", "not_a_directory", "quarantine"]
+FindError = Literal[
+    "empty_name",
+    "not_found",
+    "not_a_directory",
+    "quarantine",
+    "hidden_folder",
+    "folder_not_typed",
+]
 
 
 @dataclass(frozen=True)
@@ -60,12 +67,22 @@ def _inside(path: str, folder: str) -> bool:
     return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
 
 
+def default_roots(cwd: Path, home: Path) -> list[Path]:
+    """The roots searched without a folder, in order (T11)."""
+    return [cwd, *(home / name for name in HOME_FOLDERS), home]
+
+
 def _roots(folder: str | None, cwd: Path, home: Path) -> list[Path]:
     if folder is not None:
         # unquoted and `~` expanded as the allow rule does: `~` means `home`, as in
         # the default roots, not the HOME variable
         return [resolve_path(expand_home(unquote(folder), home), cwd)]
-    return [cwd, *(home / name for name in HOME_FOLDERS), home]
+    return default_roots(cwd, home)
+
+
+def _hidden(path: str) -> bool:
+    """A component of `path` is a dot directory (`.` and `..` themselves are not)."""
+    return any(p.startswith(".") and p not in (".", "..") for p in path.split(os.sep))
 
 
 def find_files(
@@ -77,7 +94,9 @@ def find_files(
     home: Path | None = None,
 ) -> FindResult:
     """Supported-type files whose name contains `name`, under `folder` (resolved like a
-    source path; it must be an existing directory) or the default roots (R18, T11)."""
+    source path; it must be an existing directory and no dot directory, also not
+    through `..` or a symlink) or the default roots (R18, T11). Whether the user typed
+    `folder` is the caller's check (`detect.allow_folder`)."""
     query = fold(name.strip())
     if not query:
         return FindResult(error="empty_name")
@@ -86,6 +105,9 @@ def find_files(
     roots = _roots(folder, cwd, home)
     if folder is not None:
         root = roots[0]
+        # a dot directory is never a root, also when reached through `..` or a symlink
+        if _hidden(str(root)) or _hidden(os.path.normpath(root)) or _hidden(_real(root)):
+            return FindResult(error="hidden_folder")
         if not root.exists():
             return FindResult(error="not_found")
         if not root.is_dir():

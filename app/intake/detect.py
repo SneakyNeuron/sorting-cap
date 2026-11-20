@@ -14,8 +14,9 @@ path is returned even when it does not exist, so the caller can report it as not
 found. At most `MAX_SOURCES` per message are ingested (`split_cap`).
 
 `allow_ingest` decides, before any file read or fetch, whether the intake agent may
-ingest a spec: only URLs and paths the user typed this round, or a `find_files`
-result after a yes/no confirmation. It touches no file system.
+ingest a spec: only URLs and paths the user typed this round; a path matched only by
+its file name, or a `find_files` result, after a yes/no confirmation. `allow_folder`
+applies the same path rule to a `find_files` folder. Neither touches the file system.
 
 Every scan is linear: tokens come from one `\\S+` pass, quote openers and closers from
 one regex pass each, matched by monotone pointers; no backtracking quantifiers.
@@ -305,30 +306,53 @@ def _is_bare_host(key: str) -> bool:
 @dataclass
 class _Typed:
     urls: set[str]  # typed with a scheme or `www.`
+    http_urls: set[str]  # typed with `http://` (the only ones `http://` may fetch)
     bare_urls: set[str]  # bare `host/path` tokens with a named host
-    paths: set[str]
-    names: set[str]
+    paths: set[str]  # every other token, resolved (`resolve_spec`)
+    names: set[str]  # their file names
 
 
-def _typed(messages: Iterable[str], home: Path) -> _Typed:
-    typed = _Typed(set(), set(), set(), set())
+def resolve_spec(text: str, home: Path, cwd: Path) -> str:
+    """`text` as an absolute path, lexically: `~` expanded against `home`, a relative
+    path joined to `cwd`, empty and `.` segments dropped. `..` is kept, since it may
+    cross a symlink. Touches no file system."""
+    text = expand_home(text, home)
+    if not text.startswith("/"):
+        text = str(cwd).rstrip("/") + "/" + text
+    parts = [p for p in text.split("/") if p not in ("", ".")]
+    return "/" + "/".join(parts)
+
+
+def _typed(messages: Iterable[str], home: Path, cwd: Path) -> _Typed:
+    typed = _Typed(set(), set(), set(), set(), set())
     for message in messages:
         for cand in _candidates(message):
             text = cand.text
             if not cand.quoted:
                 at = _url_start(text)
                 if at >= 0:
-                    typed.urls.add(_url_key(text[at:]))
-                elif _is_www_host(text):
+                    key = _url_key(text[at:])
+                    typed.urls.add(key)
+                    if text[at:].lower().startswith("http://"):
+                        typed.http_urls.add(key)
+                    continue  # a URL token is no typed path or file name
+                if _is_www_host(text):
                     typed.urls.add(_url_key(text))
-                elif "." in text and "@" not in text and "://" not in text:
+                    continue
+                if "." in text and "@" not in text and "://" not in text:
                     key = _url_key(text)
                     if _is_bare_host(key):
                         typed.bare_urls.add(key)
-            typed.paths.add(text)
-            if text.startswith("~"):
-                typed.paths.add(expand_home(text, home))
+                        if _is_bare_url_spec(text):
+                            # may still be a relative path typed exactly; its file
+                            # name is a URL's, not a typed file name
+                            typed.paths.add(resolve_spec(text, home, cwd))
+                            continue
+            if len(text) > MAX_PATH_LEN:
+                continue
+            typed.paths.add(resolve_spec(text, home, cwd))
             typed.names.add(_name(text))
+    typed.names.discard("")
     return typed
 
 
@@ -338,20 +362,28 @@ def allow_ingest(
     found: Iterable[str],
     *,
     home: Path | None = None,
+    cwd: Path | None = None,
+    detected: Iterable[str] = (),
 ) -> Verdict:
     """May the intake agent ingest `spec`? `messages` are the user's messages of this
-    round, `found` the paths `find_files` returned this round (R6, T7).
+    round, `found` the paths `find_files` returned this round, `detected` the paths
+    the detector found in the user's messages (R6, T7).
 
     URLs: allowed when typed (compared without scheme; a bare `host/path` token with a
     dot counts when its host is a name, not an address, and the verdict then carries
-    `bare_host`); the returned URL has trailing punctuation removed. A spec without a
-    scheme that matches such a bare token is read as `https://` + spec with
-    `bare_host`, unless it is path-like (`/`, `~`, `./`, `../`), its first segment has
-    no dot, or it is a bare file name of a supported type (`cv.pdf`). Paths: allowed
-    when typed as given (after `~` expansion) or by file name (case-sensitive); a
-    `find_files` result needs the user's confirmation.
-    Everything else is refused. Reads no file and fetches nothing."""
+    `bare_host`); an `http://` spec only when the user typed that URL with `http://`
+    (a URL typed with `https://`, `www.` or bare is never fetched over plain HTTP); the
+    returned URL has trailing punctuation removed. A spec without a scheme that
+    matches such a bare token is read as `https://` + spec with `bare_host`, unless it
+    is path-like (`/`, `~`, `./`, `../`), its first segment has no dot, it is a bare
+    file name of a supported type (`cv.pdf`), or it is a detected path. Paths
+    (resolved by `resolve_spec` against `home` and `cwd`): allowed when the resolved
+    path equals a typed or detected one; a match by file name only (case-sensitive,
+    names in URL tokens not counted) or a `find_files` result needs the user's
+    confirmation, and the verdict then carries the full path. Everything else is
+    refused. Reads no file and fetches nothing."""
     home = home if home is not None else Path.home()
+    cwd = cwd if cwd is not None else Path.cwd()
     spec = unquote(spec)
     if spec.lower().startswith("www."):
         spec = "https://" + spec
@@ -359,27 +391,58 @@ def allow_ingest(
     kind: SourceKind = "url" if is_url else "path"
     if not spec:
         return Verdict("refused", spec, kind, "empty")
-    typed = _typed(messages, home)
-    if not is_url and _is_bare_url_spec(spec) and _url_key(spec) in typed.bare_urls:
-        url = "https://" + spec.rstrip(TRAILING)
-        if "@" not in _netloc(url):
-            return Verdict("allowed", url, "url", bare_host=True)
+    typed = _typed(messages, home, cwd)
     if is_url:
         spec = spec.rstrip(TRAILING)
         if "@" not in _netloc(spec):
             key = _url_key(spec)
-            if key in typed.urls:
+            plain = spec.lower().startswith("http://")
+            if plain:
+                if key in typed.http_urls:
+                    return Verdict("allowed", spec, kind)
+            elif key in typed.urls:
                 return Verdict("allowed", spec, kind)
-            if key in typed.bare_urls:
+            elif key in typed.bare_urls:
                 return Verdict("allowed", spec, kind, bare_host=True)
         return Verdict("refused", spec, kind, "url_not_typed")
-    expanded = expand_home(spec, home)
+    if len(spec) > MAX_PATH_LEN:
+        return Verdict("refused", spec, kind, "path_not_typed")
+    resolved = resolve_spec(spec, home, cwd)
+    seen = {resolve_spec(d, home, cwd) for d in detected if len(d) <= MAX_PATH_LEN}
+    if resolved not in seen and _is_bare_url_spec(spec) and _url_key(spec) in typed.bare_urls:
+        url = "https://" + spec.rstrip(TRAILING)
+        if "@" not in _netloc(url):
+            return Verdict("allowed", url, "url", bare_host=True)
+    if resolved in typed.paths or resolved in seen:
+        return Verdict("allowed", resolved, kind)
     name = _name(spec)
-    if spec in typed.paths or expanded in typed.paths or (name and name in typed.names):
-        return Verdict("allowed", spec, kind)
-    if expanded in set(found):
-        return Verdict("confirm", expanded, kind)
+    hits = {resolve_spec(f, home, cwd) for f in found if len(f) <= MAX_PATH_LEN}
+    if (name and name in typed.names) or resolved in hits:
+        return Verdict("confirm", resolved, kind)
     return Verdict("refused", spec, kind, "path_not_typed")
+
+
+def allow_folder(
+    folder: str,
+    messages: Iterable[str],
+    *,
+    home: Path,
+    cwd: Path,
+    detected: Iterable[str] = (),
+    roots: Iterable[Path] = (),
+) -> bool:
+    """May `find_files` search `folder`? Only when it resolves (`resolve_spec`) to a
+    path the user typed this round, a detected path, or one of `roots` (the default
+    roots, searched anyway without a folder). No file-name match; touches no file
+    system."""
+    folder = unquote(folder)
+    if not folder or len(folder) > MAX_PATH_LEN:
+        return False
+    resolved = resolve_spec(folder, home, cwd)
+    typed = _typed(messages, home, cwd)
+    seen = {resolve_spec(d, home, cwd) for d in detected if len(d) <= MAX_PATH_LEN}
+    allowed = typed.paths | seen | {resolve_spec(str(r), home, cwd) for r in roots}
+    return resolved in allowed
 
 
 def _is_bare_url_spec(spec: str) -> bool:

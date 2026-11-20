@@ -221,6 +221,9 @@ class IntakeNodes:
             return {"message": None, "goto": "listen"}
         round_ = self.round(state)
         take, skipped = split_cap(detect(message, self.cwd or Path.cwd()))
+        for found in (*take, *skipped):
+            if found.kind == "path" and found.normalised not in round_.data.detected:
+                round_.data.detected.append(found.normalised)
         goto = "agent"
         try:
             for found in take:

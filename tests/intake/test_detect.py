@@ -134,15 +134,19 @@ def test_adversarial_input_is_linear(here, chunk):
 # --- allow rule (T7) ------------------------------------------------------------------
 
 
-def verdict(spec, messages, found_paths=(), home=Path("/home/u")):
-    return allow_ingest(spec, messages, list(found_paths), home=home)
+def verdict(spec, messages, found_paths=(), home=Path("/home/u"), cwd=Path("/w"), detected=()):
+    return allow_ingest(
+        spec, messages, list(found_paths), home=home, cwd=cwd, detected=list(detected)
+    )
 
 
 @pytest.mark.parametrize(
     ("spec", "messages", "decision"),
     [
         ("https://firma.cz/jobs?id=1", ["see https://firma.cz/jobs?id=1."], "allowed"),
-        ("http://firma.cz/jobs/", ["see https://firma.cz/jobs"], "allowed"),
+        ("http://firma.cz/jobs/", ["see https://firma.cz/jobs"], "refused"),
+        ("https://firma.cz/jobs/", ["see http://firma.cz/jobs"], "allowed"),
+        ("http://firma.cz/jobs/", ["see http://firma.cz/jobs"], "allowed"),
         ("https://firma.cz/kariera", ["moje firma.cz/kariera, díky"], "allowed"),
         ("https://www.firma.cz", ["www.firma.cz!"], "allowed"),
         ("www.firma.cz", ["see www.firma.cz"], "allowed"),
@@ -153,9 +157,12 @@ def verdict(spec, messages, found_paths=(), home=Path("/home/u")):
         ("https://firma.cz/kariera/x", ["firma.cz/kariera"], "refused"),
         ("~/cv.pdf", ["this is my CV: ~/cv.pdf"], "allowed"),
         ("/home/u/cv.pdf", ["this is my CV: ~/cv.pdf"], "allowed"),
-        ("~/Downloads/cv.pdf", ["cv.pdf in my Downloads"], "allowed"),
+        ("~/Downloads/cv.pdf", ["cv.pdf in my Downloads"], "confirm"),
         ("/home/u/Downloads/CV.pdf", ["cv.pdf in my Downloads"], "refused"),
-        ("/tmp/a b/cv 2.pdf", ['it is "~/x/cv 2.pdf"'], "allowed"),
+        ("/tmp/a b/cv 2.pdf", ['it is "~/x/cv 2.pdf"'], "confirm"),
+        ("/home/u/x/cv 2.pdf", ['it is "~/x/cv 2.pdf"'], "allowed"),
+        ("cv.pdf", ["my ./cv.pdf"], "allowed"),
+        ("/w/cv.pdf", ["my cv.pdf"], "allowed"),
         ('"~/cv.pdf"', ["~/cv.pdf"], "allowed"),
         ("/etc/secret.txt", ["my cv.pdf"], "refused"),
         ("", ["anything"], "refused"),
@@ -187,9 +194,11 @@ def test_found_file_needs_confirmation():
     assert verdict("~/Downloads/Životopis 2026.pdf", [], found_paths).decision == "confirm"
 
 
-def test_typed_name_beats_confirmation():
+def test_typed_name_only_needs_confirmation():
+    # validation fix D6: a file-name match, also on a `find_files` hit, is confirmed
     found_paths = ["/home/u/Downloads/cv.pdf"]
-    assert verdict("/home/u/Downloads/cv.pdf", ["it is cv.pdf"], found_paths).decision == "allowed"
+    assert verdict("/home/u/Downloads/cv.pdf", ["it is cv.pdf"], found_paths).decision == "confirm"
+    assert verdict("/home/u/Downloads/cv.pdf", ["it is ~/Downloads/cv.pdf"]).decision == ("allowed")
 
 
 def test_url_is_never_allowed_through_found_files():
@@ -198,7 +207,8 @@ def test_url_is_never_allowed_through_found_files():
 
 def test_verdict_normalises_spec():
     assert verdict("www.firma.cz", ["www.firma.cz"]).spec == "https://www.firma.cz"
-    assert verdict(' "~/cv.pdf" ', ["~/cv.pdf"]).spec == "~/cv.pdf"
+    assert verdict(' "~/cv.pdf" ', ["~/cv.pdf"]).spec == "/home/u/cv.pdf"
+    assert verdict("cv.pdf", ["cv.pdf"]).spec == "/w/cv.pdf"
     assert verdict("https://x.cz", ["https://x.cz"]).kind == "url"
 
 
@@ -210,7 +220,8 @@ def test_allow_rule_reads_no_files(monkeypatch):
     monkeypatch.setattr(Path, "is_file", boom)
     monkeypatch.setattr(Path, "stat", boom)
     monkeypatch.setattr(Path, "read_bytes", boom)
-    assert verdict("/x/cv.pdf", ["cv.pdf"]).decision == "allowed"
+    assert verdict("/x/cv.pdf", ["/x/cv.pdf"]).decision == "allowed"
+    assert verdict("/x/cv.pdf", ["cv.pdf"]).decision == "confirm"
     assert verdict("/x/other.pdf", ["cv.pdf"]).decision == "refused"
 
 
@@ -265,8 +276,8 @@ def test_bare_host_flag():
 
 
 def test_bare_host_with_letters_and_port():
-    assert verdict("http://firma.cz:8080/x", ["firma.cz:8080/x"]).decision == "allowed"
-    assert verdict("http://my.host1/x", ["my.host1/x"]).decision == "allowed"
+    assert verdict("https://firma.cz:8080/x", ["firma.cz:8080/x"]).decision == "allowed"
+    assert verdict("https://my.host1/x", ["my.host1/x"]).decision == "allowed"
 
 
 def test_verdict_url_has_no_trailing_punctuation():
@@ -328,3 +339,70 @@ def test_path_like_or_file_name_spec_stays_a_path(spec, message):
 def test_bare_spec_not_typed_is_refused():
     assert verdict("firma.cz/kariera", ["hello"]).decision == "refused"
     assert verdict("10.1/x", ["10.1/x"]).kind == "path"  # an address is never a bare host
+
+
+# --- validation fixes D6 and D8 (security) -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        ("/home/u/.config/x/notes.txt", "my notes.txt are old"),
+        ("~/.ssh/cv.pdf", "cv.pdf is attached"),
+    ],
+)
+def test_file_name_match_needs_confirmation_with_the_full_path(spec, message):
+    result = verdict(spec, [message])
+    assert result.decision == "confirm"
+    assert result.spec == spec.replace("~", "/home/u", 1)
+    assert result.kind == "path"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "see https://firma.cz/jobs/cv.pdf",
+        "see www.firma.cz/cv.pdf",
+        "see firma.cz/jobs/cv.pdf",
+    ],
+)
+def test_name_from_a_url_token_is_no_typed_file_name(message):
+    result = verdict("/etc/x/cv.pdf", [message])
+    assert result.decision == "refused"
+    assert result.reason == "path_not_typed"
+
+
+def test_found_file_with_a_typed_name_is_confirmed_not_allowed():
+    found_paths = ["/home/u/.config/x/notes.txt"]
+    result = verdict("/home/u/.config/x/notes.txt", ["my notes.txt"], found_paths)
+    assert result.decision == "confirm"
+
+
+def test_exact_path_after_resolution_is_allowed():
+    assert verdict("/w/docs/cv.pdf", ["see docs/cv.pdf"]).decision == "allowed"
+    assert verdict("docs/./cv.pdf", ["see ./docs/cv.pdf"]).spec == "/w/docs/cv.pdf"
+    # `..` is kept: it may cross a symlink, so it is not folded away
+    assert verdict("/w/x/../cv.pdf", ["see /w/cv.pdf"]).decision == "confirm"
+
+
+def test_detected_path_is_not_read_as_a_bare_link():
+    # `project.v2/notes.md` exists and was detected as a path: it stays a path
+    result = verdict(
+        "project.v2/notes.md", ["see project.v2/notes.md"], detected=["project.v2/notes.md"]
+    )
+    assert (result.decision, result.kind) == ("allowed", "path")
+    assert result.spec == "/w/project.v2/notes.md"
+    # not detected (no such file): the bare-link reading of batch B stays
+    assert verdict("project.v2/notes.md", ["see project.v2/notes.md"]).kind == "url"
+
+
+def test_https_typed_is_never_downgraded():
+    result = verdict("http://firma.cz/kariera", ["https://firma.cz/kariera"])
+    assert result.decision == "refused"
+    assert result.reason == "url_not_typed"
+
+
+def test_www_and_bare_tokens_allow_https_only():
+    assert verdict("http://www.firma.cz", ["www.firma.cz"]).decision == "refused"
+    assert verdict("http://firma.cz/kariera", ["firma.cz/kariera"]).decision == "refused"
+    assert verdict("https://firma.cz/kariera", ["firma.cz/kariera"]).decision == "allowed"

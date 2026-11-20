@@ -192,6 +192,22 @@ def test_headless_explicit_source_error_exits_1(en, cwd):
     assert str(profile_path(en)) in flat  # the summary is still printed
 
 
+def test_headless_explicit_source_too_large_exits_1(en, cwd, monkeypatch):
+    # validation fix D10: a too-large local file is a per-source error (Phase 2 path)
+    monkeypatch.setattr("app.intake.sources.LOCAL_MAX_BYTES", 100)
+    (cwd / "a.txt").write_text("I want backend roles.", encoding="utf-8")
+    (cwd / "big.txt").write_text("x" * 101, encoding="utf-8")
+    model = structured_model(roles("Backend developer"), FILTER)
+    code, out, err = headless(
+        ["add-information", "--source", str(cwd / "a.txt"), "--source", str(cwd / "big.txt")],
+        model,
+    )
+    assert code == EXIT_FAILURE
+    assert load_profile(en).body("target_roles") == "Backend developer"
+    flat = " ".join(out.split())
+    assert f"failed: {cwd / 'big.txt'}" in flat and "MB" in flat
+
+
 def test_headless_dropped_in_error_does_not_fail_the_run(en, cwd):
     drop(en, "empty.txt", "")
     drop(en, "notes.txt", "Backend roles, please.")

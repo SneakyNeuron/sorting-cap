@@ -922,3 +922,95 @@ def test_sources_error_in_a_tool_is_a_failed_turn(en, cwd, monkeypatch):
     assert outcome.failed and outcome.tool_calls == 1
     assert "The model did not manage this turn" in buf.getvalue()
     assert "manifest.json" in (outcome.error or "")
+
+
+# --- validation fixes D6 and D7 (security) -------------------------------------------
+
+
+def test_name_match_elsewhere_is_confirmed_with_the_full_path(en, cwd):
+    # an injected profile value names a same-named file far away: the user is asked
+    hidden = cwd.parent / "home" / ".config" / "x" / "notes.txt"
+    hidden.parent.mkdir(parents=True)
+    hidden.write_text("secret\n", encoding="utf-8")
+    reader = structured_model()
+    prompter = ScriptedPrompter(False)
+    round_, _, _ = setup(en, cwd, reader=reader, prompter=prompter)
+    round_.data.user_messages.append("my notes.txt are old")
+    result = round_.ingest_source(IngestSourceArgs(spec=str(hidden)))
+    assert (result.ok, result.refused) == (False, "declined")
+    [(kind, question, _)] = prompter.asked
+    assert kind == "confirm" and str(hidden) in question
+    assert load_manifest(en).sources == [] and reader.calls == []
+
+
+def test_name_match_confirmed_is_ingested(en, cwd):
+    home_file = cwd.parent / "home" / "Downloads" / "cv.md"
+    home_file.parent.mkdir(parents=True)
+    home_file.write_text("CV\n", encoding="utf-8")
+    prompter = ScriptedPrompter(True)
+    round_, _, _ = setup(en, cwd, reader=structured_model(Extraction()), prompter=prompter)
+    round_.data.user_messages.append("cv.md in my Downloads")
+    result = round_.ingest_source(IngestSourceArgs(spec="~/Downloads/cv.md"))
+    assert result.ok and result.spec == str(home_file)
+    assert len(prompter.asked) == 1
+
+
+def test_exact_typed_relative_path_needs_no_confirmation(en, cwd):
+    (cwd / "notes.md").write_text("Rust\n", encoding="utf-8")
+    prompter = ScriptedPrompter()
+    round_, _, _ = setup(en, cwd, reader=structured_model(Extraction()), prompter=prompter)
+    round_.data.user_messages.append("see ./notes.md")
+    result = round_.ingest_source(IngestSourceArgs(spec="notes.md"))
+    assert result.ok and result.spec == str(cwd / "notes.md")
+    assert prompter.asked == []
+
+
+def test_detected_path_with_a_dotted_folder_stays_a_path(en, cwd):
+    (cwd / "project.v2").mkdir()
+    (cwd / "project.v2" / "notes.md").write_text("Rust\n", encoding="utf-8")
+    round_, _, _ = setup(en, cwd, reader=structured_model(Extraction()))
+    round_.data.user_messages.append("see project.v2/notes.md")
+    round_.data.detected.append("project.v2/notes.md")
+    result = round_.ingest_source(IngestSourceArgs(spec="project.v2/notes.md"))
+    assert result.ok and result.report.status == "added"
+    assert result.spec == str(cwd / "project.v2" / "notes.md")
+
+
+def test_find_files_folder_not_typed_is_refused(en, cwd, monkeypatch):
+    def walked(*_args, **_kwargs):
+        raise AssertionError("walked a folder the user did not type")
+
+    monkeypatch.setattr("app.intake.round.find_files", walked)
+    round_, _, _ = setup(en, cwd)
+    round_.data.user_messages.append("my CV is somewhere")
+    result = round_.find_files(FindFilesArgs(name="cv", folder="/etc"))
+    assert (result.paths, result.error) == ([], "folder_not_typed")
+    assert round_.data.found == []
+
+
+def test_find_files_folder_typed_or_default_root_is_searched(en, cwd):
+    docs = cwd / "docs"
+    (docs / "cv.md").parent.mkdir()
+    (docs / "cv.md").write_text("CV\n", encoding="utf-8")
+    downloads = cwd.parent / "home" / "Downloads"
+    downloads.mkdir(parents=True)
+    (downloads / "cv.pdf").write_text("x", encoding="utf-8")
+    round_, _, _ = setup(en, cwd)
+    round_.data.user_messages.append("my CV is in ./docs/ somewhere")
+    assert round_.find_files(FindFilesArgs(name="cv", folder=str(docs))).paths == [
+        str(docs / "cv.md")
+    ]
+    # a default root is searched anyway without a folder, so naming it is allowed
+    assert round_.find_files(FindFilesArgs(name="cv", folder="~/Downloads")).paths == [
+        str(downloads / "cv.pdf")
+    ]
+
+
+def test_find_files_hidden_folder_is_refused_even_when_typed(en, cwd):
+    hidden = cwd.parent / "home" / ".config"
+    hidden.mkdir(parents=True)
+    (hidden / "cv.md").write_text("x", encoding="utf-8")
+    round_, _, _ = setup(en, cwd)
+    round_.data.user_messages.append("look in ~/.config")
+    result = round_.find_files(FindFilesArgs(name="cv", folder="~/.config"))
+    assert (result.paths, result.error) == ([], "hidden_folder")

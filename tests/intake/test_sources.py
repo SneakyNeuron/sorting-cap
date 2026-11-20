@@ -604,7 +604,37 @@ def test_local_html_over_the_size_cap_refused(workspace, cwd, dropped):
     assert path.exists()
 
 
-def test_local_text_files_have_no_size_cap(workspace, cwd):
+@pytest.mark.parametrize("name", ["big.txt", "big.md", "big.pdf"])
+@pytest.mark.parametrize("dropped", [False, True])
+def test_every_local_type_over_the_local_cap_refused(workspace, cwd, monkeypatch, name, dropped):
+    # validation fix D10: every local source has a size cap, read bounded
+    monkeypatch.setattr(src, "LOCAL_MAX_BYTES", 1000)
+    reads = []
+    real = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: reads.append(self) or real(self))
+    ctx, _ = make_ctx(workspace)
+    if dropped:
+        path = put(src.ensure_sources_dir(workspace), name, b"a" * 1001)
+        [result] = src.scan_dropped(ctx, scorer=FakeScorer())
+    else:
+        path = put(cwd, name, b"a" * 1001)
+        result = src.ingest_source(ctx, str(path))
+    assert result.status == "error" and result.code == "too_large"
+    assert f"{src.LOCAL_MAX_MB} MB" in result.reason
+    assert path not in reads and path.exists()
+    assert src.load_manifest(workspace).sources == []
+
+
+def test_local_text_file_at_the_local_cap_is_read(workspace, cwd, monkeypatch):
+    monkeypatch.setattr(src, "LOCAL_MAX_BYTES", 1000)
+    path = put(cwd, "ok.txt", "a" * 1000)
+    ctx, _ = make_ctx(workspace)
+    assert src.ingest_source(ctx, str(path)).status == "added"
+
+
+def test_local_text_files_above_the_fetch_cap_still_read(workspace, cwd):
+    # the local cap of unguarded types is larger than the fetch and `.html` cap
+    assert src.LOCAL_MAX_BYTES > src.MAX_BYTES
     path = put(cwd, "big.txt", "Python developer. " * (src.MAX_BYTES // 18 + 10))
     ctx, _ = make_ctx(workspace)
     assert src.ingest_source(ctx, str(path)).status == "added"

@@ -182,3 +182,20 @@ def test_no_file_content_read(tree, workspace, monkeypatch):
     monkeypatch.setattr(Path, "open", boom)
     monkeypatch.setattr("builtins.open", boom)
     assert names(find_files("cv", str(tree), cwd=tree, workspace=workspace)) == ["cv.md"]
+
+
+@pytest.mark.parametrize("folder", [".ssh", ".config/app", "a/../.ssh"])
+def test_hidden_folder_is_refused(tree, workspace, folder):
+    # validation fix D7: no dot directory as a root, also below or through `..`
+    touch(tree / ".ssh" / "cv.md")
+    touch(tree / ".config" / "app" / "cv.md")
+    (tree / "a").mkdir()
+    result = find_files("cv", folder, cwd=tree, workspace=workspace)
+    assert (result.paths, result.error) == ([], "hidden_folder")
+
+
+def test_symlink_into_a_hidden_folder_is_refused(tree, workspace):
+    touch(tree / ".ssh" / "cv.md")
+    (tree / "link").symlink_to(tree / ".ssh")
+    result = find_files("cv", "link", cwd=tree, workspace=workspace)
+    assert result.error == "hidden_folder"

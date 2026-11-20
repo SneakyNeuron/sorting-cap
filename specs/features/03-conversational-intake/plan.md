@@ -91,6 +91,14 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] D5: an `append` answer keeps the origins of source values already written to its item; a `replace` answer drops them
 - [x] Tests: answer then source (adds and contradicts) and source then answer (replace and append) agree across chat line, report, status and saved profile (round and graph); an empty reply after a text-and-call reply; tool calls then an empty reply; a model error after text; an `OSError` and a `SourcesError` inside a tool handler; a bare spec allowed as a URL with the local check, path-like and file-name specs staying paths; a cancelled round leaving the CV flag unset and `write` setting it for an added source
 
+## Validation fixes (security)
+- [x] D6: `allow_ingest` allows without asking only a spec resolving (`resolve_spec`: `~`, cwd, `.` segments) to an exactly typed or detected path, and returns that resolved path; a file-name match (names in URL tokens not counted) or a `find_files` hit is a `confirm` verdict with the full path, which the `ingest_source` handler confirms (default no); `RoundData.detected` records the detected path specs, and a spec resolving to one is never read as a bare link
+- [x] D7: the `find_files` handler refuses a `folder` the user did not type (`allow_folder`: the T7 path rule, default roots allowed) as `folder_not_typed`; `find_files` refuses a dot-directory root (lexical, `..`, symlink) as `hidden_folder`; the cs/en agent prompts list both codes
+- [x] D8: an `http://` spec is allowed only when the user typed that URL with `http://`; `https://`, `www.` and bare tokens allow `https://` only
+- [x] D10: every local source is read bounded (`.html`/`.htm` at `MAX_BYTES`, `.txt`/`.md`/`.pdf` at `LOCAL_MAX_BYTES`, 20 MiB), a larger one a per-source `too_large` error
+- [x] D11: a REPL-level test runs `/add-information` with a scripted model and checks that a typed secret reaches the intake agent but neither `.history`, `ChatAgent.history` nor the workspace; V10 ticked
+- [x] Tests: name match elsewhere confirmed (and declined reads nothing), names in URL tokens refused, exact relative path allowed without asking, a detected dotted-folder path staying a path (rule, handler, graph), `https://` typed not downgraded, `www.`/bare tokens `https://` only, a folder not typed refused without a walk, typed folder and default root searched, dot-directory folders refused (also typed, through `..` and a symlink), every local type over the cap refused for paths and drop-ins without a whole read, headless `--source` too large exiting 1, the REPL history test
+
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
 - A message with 12 URLs → the first 10 ingested, the rest reported as skipped for the turn.
@@ -103,7 +111,8 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - `checklist.json` hand-edited to invalid JSON → rebuilt from `profile.md` with a note; never a crash.
 - First round after the Phase 2 upgrade (no `checklist.json`) → built silently, filled items `known` with origin `profile`, and written at the end of the round.
 - The user writes "my CV is somewhere in Downloads" → the agent calls `find_files("cv", "~/Downloads")`, lists the candidates, the user names one, the code asks yes/no with the full path, and only a yes ingests it.
-- The user types `firma.cz/kariera` → not detected (no `www.`, no scheme); the agent calls `ingest_source("https://firma.cz/kariera")`, which is allowed.
+- The user types `firma.cz/kariera` → not detected (no `www.`, no scheme); the agent calls `ingest_source("https://firma.cz/kariera")`, which is allowed; `http://firma.cz/kariera` is refused.
+- The user writes "cv.pdf in my Downloads" → the agent's `ingest_source("~/Downloads/cv.pdf")` matches by file name only, so the code asks yes/no with the full path first.
 - The user writes "this is my CV: ~/cv.pdf" and the reader says it is not a CV → the agent's `ingest_source("~/cv.pdf", cv=true)` is a duplicate and sets the `cv` flag.
 - The user mentions `README.md` while the cap runs in a folder without that file → plain text, no report.
 - The user empties a section by hand that the status marks `known` → reconciled to `missing` on the next read.

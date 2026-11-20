@@ -197,7 +197,8 @@ class RoundData(BaseModel):
     then; nothing is written before the round ends. `answers` are the latest direct
     answer per item (item id → value); `updates` fill-only source values; `events`
     the order in which things were learned, which the merge and the status replay.
-    `user_messages` and `found` feed the `ingest_source` allow rule (T7). `reports`
+    `user_messages`, `found` and `detected` (the path specs the detector found in the
+    user's messages, as normalised) feed the `ingest_source` allow rule (T7). `reports`
     are the source reports not yet shown to the agent (the next context message
     carries them).
     """
@@ -208,6 +209,7 @@ class RoundData(BaseModel):
     started: ChecklistStatus = Field(default_factory=ChecklistStatus)
     user_messages: list[str] = Field(default_factory=list)
     found: list[str] = Field(default_factory=list)
+    detected: list[str] = Field(default_factory=list)
     answers: dict[ItemId, str] = Field(default_factory=dict)
     updates: list[ItemUpdate] = Field(default_factory=list)
     events: list[RoundEvent] = Field(default_factory=list)

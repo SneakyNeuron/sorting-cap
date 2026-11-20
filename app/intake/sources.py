@@ -77,6 +77,10 @@ FETCH_TIMEOUT = 20.0
 MAX_REDIRECTS = 5
 MAX_BYTES = 5 * 1024 * 1024
 MAX_MB = 5
+# local `.txt`, `.md` and `.pdf` (unguarded): larger than the fetch cap, since a CV PDF
+# with photos can pass 5 MiB, but still bounded before any read (validation fix D10)
+LOCAL_MAX_BYTES = 20 * 1024 * 1024
+LOCAL_MAX_MB = 20
 HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 
 _SLUG_MAX = 40
@@ -509,21 +513,22 @@ def resolve_path(spec: str, cwd: Path | None = None) -> Path:
 
 
 def _read_file(path: Path) -> tuple[SourceType, bytes]:
-    """Type and bytes of a local source; guarded `.html`/`.htm` capped at `MAX_BYTES`."""
+    """Type and bytes of a local source, read bounded: guarded `.html`/`.htm` capped at
+    `MAX_BYTES`, every other type at `LOCAL_MAX_BYTES`; a larger file is a
+    `too_large` error and is never read whole."""
     if not path.exists():
         raise _Failure("not_found")
     kind = EXTENSIONS.get(path.suffix.lower())
     if kind is None:
         raise _Failure("unsupported", ext=path.suffix or "(none)")
+    cap, mb = (MAX_BYTES, MAX_MB) if kind in GUARDED_TYPES else (LOCAL_MAX_BYTES, LOCAL_MAX_MB)
     try:
-        if kind not in GUARDED_TYPES:
-            return kind, path.read_bytes()
         with path.open("rb") as fh:
-            raw = fh.read(MAX_BYTES + 1)
+            raw = fh.read(cap + 1)
     except OSError as exc:
         raise _Failure("unreadable", detail=short_error(exc)) from exc
-    if len(raw) > MAX_BYTES:
-        raise _Failure("too_large", mb=MAX_MB)
+    if len(raw) > cap:
+        raise _Failure("too_large", mb=mb)
     return kind, raw
 
 
