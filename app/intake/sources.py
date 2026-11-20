@@ -515,12 +515,15 @@ def resolve_path(spec: str, cwd: Path | None = None) -> Path:
 def _read_file(path: Path) -> tuple[SourceType, bytes]:
     """Type and bytes of a local source, read bounded: guarded `.html`/`.htm` capped at
     `MAX_BYTES`, every other type at `LOCAL_MAX_BYTES`; a larger file is a
-    `too_large` error and is never read whole."""
+    `too_large` error and is never read whole. Only a regular file (after symlinks)
+    is opened; anything else is `unreadable`."""
     if not path.exists():
         raise _Failure("not_found")
     kind = EXTENSIONS.get(path.suffix.lower())
     if kind is None:
         raise _Failure("unsupported", ext=path.suffix or "(none)")
+    if not path.is_file():  # a FIFO or device would block the read (follows symlinks)
+        raise _Failure("unreadable", detail="not a regular file")
     cap, mb = (MAX_BYTES, MAX_MB) if kind in GUARDED_TYPES else (LOCAL_MAX_BYTES, LOCAL_MAX_MB)
     try:
         with path.open("rb") as fh:

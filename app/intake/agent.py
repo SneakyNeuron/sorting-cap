@@ -193,7 +193,8 @@ def run_turn(
 
     def end(kind: TurnKind) -> TurnOutcome:
         text = "\n\n".join(texts)
-        if not text and calls:  # the cap, or an empty reply after tool calls only
+        # the cap, or an empty reply after tool calls only; not when the round closes
+        if not text and calls and kind != "finished":
             text = ctx.msg("intake.agent.go_on")
         if text:
             say(ctx.console, text)

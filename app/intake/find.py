@@ -85,6 +85,17 @@ def _hidden(path: str) -> bool:
     return any(p.startswith(".") and p not in (".", "..") for p in path.split(os.sep))
 
 
+def _hidden_below(path: str, bases: list[str]) -> bool:
+    """A dot directory in `path` below the default roots that contain it: the roots
+    themselves are walked without a folder, so their own location does not count. A
+    path under no root is checked whole; under several, it passes when the part below
+    any one of them has no dot directory (the default walk reaches it from that root)."""
+    containing = [b for b in bases if _inside(path, b)]
+    if not containing:
+        return _hidden(path)
+    return all(_hidden(path[len(b.rstrip(os.sep)) :]) for b in containing)
+
+
 def find_files(
     name: str,
     folder: str | None = None,
@@ -94,8 +105,9 @@ def find_files(
     home: Path | None = None,
 ) -> FindResult:
     """Supported-type files whose name contains `name`, under `folder` (resolved like a
-    source path; it must be an existing directory and no dot directory, also not
-    through `..` or a symlink) or the default roots (R18, T11). Whether the user typed
+    source path; it must be an existing directory with no dot directory below the
+    default root it lies in, also not through `..` or a symlink) or the default roots
+    (R18, T11). Whether the user typed
     `folder` is the caller's check (`detect.allow_folder`)."""
     query = fold(name.strip())
     if not query:
@@ -105,8 +117,14 @@ def find_files(
     roots = _roots(folder, cwd, home)
     if folder is not None:
         root = roots[0]
-        # a dot directory is never a root, also when reached through `..` or a symlink
-        if _hidden(str(root)) or _hidden(os.path.normpath(root)) or _hidden(_real(root)):
+        # a dot directory is never a root, also when reached through `..` or a symlink;
+        # each form of the path is checked below the same form of the default roots
+        bases = [str(r) for r in default_roots(cwd, home)]
+        if (
+            _hidden_below(str(root), bases)
+            or _hidden_below(os.path.normpath(root), [os.path.normpath(b) for b in bases])
+            or _hidden_below(_real(root), [_real(Path(b)) for b in bases])
+        ):
             return FindResult(error="hidden_folder")
         if not root.exists():
             return FindResult(error="not_found")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
+import threading
 from pathlib import Path
 
 import httpx
@@ -207,6 +209,35 @@ def test_unreadable_permissions(workspace, cwd):
         result = src.ingest_source(ctx, "secret.txt", cwd=cwd)
     finally:
         path.chmod(0o600)
+    assert result.status == "error" and result.code == "unreadable"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs on this platform")
+def test_fifo_refused_without_blocking(workspace, cwd):
+    # validation fix D27: a FIFO with a supported extension must not hang the read
+    ctx, _ = make_ctx(workspace)
+    fifo = cwd / "cv.txt"
+    os.mkfifo(fifo)
+    results: list[SourceResult] = []
+    worker = threading.Thread(
+        target=lambda: results.append(src.ingest_source(ctx, "cv.txt", cwd=cwd)), daemon=True
+    )
+    worker.start()
+    worker.join(timeout=5)
+    if worker.is_alive():  # release the blocked open before failing
+        fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+        os.close(fd)
+        worker.join(timeout=5)
+        pytest.fail("reading a FIFO blocked")
+    [result] = results
+    assert result.status == "error" and result.code == "unreadable"
+    assert src.load_manifest(workspace).sources == []
+
+
+def test_directory_with_a_supported_extension_is_unreadable(workspace, cwd):
+    ctx, _ = make_ctx(workspace)
+    (cwd / "notes.md").mkdir()
+    result = src.ingest_source(ctx, "notes.md", cwd=cwd)
     assert result.status == "error" and result.code == "unreadable"
 
 

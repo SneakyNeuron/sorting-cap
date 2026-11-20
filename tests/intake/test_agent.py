@@ -494,6 +494,15 @@ def test_finish_ends_the_turn(en, cwd):
     assert len(model.received) == 1
 
 
+def test_finish_without_text_shows_no_go_on(en, cwd):
+    # validation fix D28: `finish` is a tool call, but the round closes; no "go on" line
+    round_, model, buf = setup(en, cwd, tool_calls(("finish", {})))
+    outcome = turn(round_, model, "that's all")
+    assert outcome.kind == "finished" and round_.data.finished
+    assert outcome.text == ""
+    assert EN.message("intake.agent.go_on") not in buf.getvalue()
+
+
 def test_invalid_args_retried_once_with_the_error(en, cwd):
     round_, model, _ = setup(
         en,

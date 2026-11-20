@@ -108,6 +108,13 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] README and CHANGELOG describe the batch B/C behaviour: name-only matches and found files confirmed, `find_files` limited to typed folders and default roots and never dot folders, no `https`→`http` downgrade, 20 MiB cap for local `.txt`/`.md`/`.pdf`
 - [x] D9 deferred to [backlog](../../backlog/2026-11-20-bare-host-dns-pinning.md), linked from the roadmap under Later / unscheduled
 
+## Validation fixes (re-review)
+- [x] D27: a local source is opened only when it is a regular file (`is_file()`, following symlinks); a FIFO, device or directory is the per-source `unreadable` error
+- [x] D28: no "go on" line on a `finished` turn (a `finish` call without text)
+- [x] D29: `find_files` checks a typed folder for dot directories only below the default roots that contain it, so `folder="."` agrees with no folder when the cwd lies under a dot directory; `~/.ssh` and `~/Downloads/../.ssh` stay refused
+- [x] D30: the `route` docstring and the "Graph nodes and edges" decision say what is true: `KeyError` only before any node set `goto`, a forgotten `goto` reuses the previous value
+- [x] Tests: a FIFO named `cv.txt` refused as `unreadable` without blocking (skipped without `os.mkfifo`), a directory with a supported extension `unreadable`; a finish-only reply without the "go on" line; a cwd under a dot directory searched with `.`, its absolute path and `~/…` like without a folder (also through a symlink), dot folders below it, `..` out of it and `~/.ssh`, `~/Downloads/../.ssh`, `~/.ssh/keys` refused
+
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
 - A message with 12 URLs → the first 10 ingested, the rest reported as skipped for the turn.

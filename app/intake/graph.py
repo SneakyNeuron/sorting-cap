@@ -81,8 +81,10 @@ def is_done(ctx: ToolContext, message: str) -> bool:
 
 
 def route(state: RoundState) -> str:
-    """The one edge function: every node names the node to run next (a node that
-    sets no `goto` breaks the graph instead of ending the round)."""
+    """The one edge function: every node names the node to run next in `goto`. Read
+    strictly, with no fallback to `write`: before any node has set `goto` it raises
+    `KeyError`. `goto` stays in the checkpointed state, so a node that forgot to set it
+    would reuse the previous node's value; every node sets it."""
     return state["goto"]
 
 

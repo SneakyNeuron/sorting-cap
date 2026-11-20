@@ -199,3 +199,43 @@ def test_symlink_into_a_hidden_folder_is_refused(tree, workspace):
     (tree / "link").symlink_to(tree / ".ssh")
     result = find_files("cv", "link", cwd=tree, workspace=workspace)
     assert result.error == "hidden_folder"
+
+
+def test_default_root_under_a_dot_directory_is_searched(tmp_path, workspace):
+    # validation fix D29: `folder="."` agrees with no folder when the cwd lies under a
+    # dot directory; what lies below the root is still checked
+    home = tmp_path / "home"
+    cwd = home / ".local" / "proj"
+    touch(cwd / "cv.md")
+    touch(cwd / "docs" / "cv-docs.md")
+    touch(cwd / ".hidden" / "cv-secret.md")
+    without = find_files("cv", None, cwd=cwd, workspace=workspace, home=home)
+    assert names(without) == ["cv-docs.md", "cv.md"]
+    for folder in (".", str(cwd), "./", "~/.local/proj"):
+        result = find_files("cv", folder, cwd=cwd, workspace=workspace, home=home)
+        assert (result.error, result.paths) == (None, without.paths), folder
+    assert names(find_files("cv", "docs", cwd=cwd, workspace=workspace, home=home)) == [
+        "cv-docs.md"
+    ]
+    for folder in (".hidden", "docs/../.hidden", "~/.local", "../other"):
+        result = find_files("cv", folder, cwd=cwd, workspace=workspace, home=home)
+        assert result.error == "hidden_folder", folder
+
+
+@pytest.mark.parametrize("folder", ["~/.ssh", "~/Downloads/../.ssh", "~/.ssh/keys"])
+def test_hidden_folder_under_home_is_refused(tmp_path, workspace, folder):
+    home = tmp_path / "home"
+    touch(home / ".ssh" / "keys" / "cv.md")
+    (home / "Downloads").mkdir()
+    result = find_files("cv", folder, cwd=tmp_path, workspace=workspace, home=home)
+    assert (result.paths, result.error) == ([], "hidden_folder")
+
+
+def test_symlinked_default_root_into_a_dot_directory_is_searched(tmp_path, workspace):
+    home = tmp_path / "home"
+    real = home / ".local" / "proj"
+    touch(real / "cv.md")
+    cwd = tmp_path / "link"
+    cwd.symlink_to(real)
+    result = find_files("cv", ".", cwd=cwd, workspace=workspace, home=home)
+    assert (result.error, names(result)) == (None, ["cv.md"])
