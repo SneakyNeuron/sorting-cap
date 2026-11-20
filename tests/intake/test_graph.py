@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage
 
 from app.intake.extract import CHAR_BUDGET
 from app.intake.filter_file import filter_path
-from app.intake.graph import MAX_FAILURES, run_round
+from app.intake.graph import MAX_FAILURES, route, run_round
 from app.intake.profile import load_profile, profile_path, save_profile
 from app.intake.sources import load_manifest, sources_dir
 from app.intake.status import checklist_path
@@ -731,3 +731,9 @@ def test_czech_round_prompts_in_czech(workspace):
     ctx, _, prompter, _ = chat(workspace, "hotovo")
     run(ctx)
     assert [q for _k, q, _ in prompter.asked] == [CS.message("intake.agent.prompt")]
+
+
+def test_route_needs_goto():
+    assert route({"goto": "listen"}) == "listen"
+    with pytest.raises(KeyError):
+        route({})

@@ -62,6 +62,15 @@ def test_folder_tilde_uses_the_home_parameter(isolated_env, workspace, tmp_path)
     assert result.paths == [str(other / "Downloads" / "cv-other.pdf")]
 
 
+@pytest.mark.parametrize("folder", ["'~/Downloads'", '" ~/Downloads "', "  ~/Downloads  "])
+def test_folder_unquoted_and_expanded_like_the_allow_rule(
+    isolated_env, workspace, tmp_path, folder
+):
+    touch(isolated_env / "Downloads" / "cv.pdf")
+    result = find_files("cv", folder, cwd=tmp_path, workspace=workspace, home=isolated_env)
+    assert result.paths == [str(isolated_env / "Downloads" / "cv.pdf")]
+
+
 def test_depth_three(tree, workspace):
     touch(tree / "cv0.md")
     touch(tree / "a" / "cv1.md")

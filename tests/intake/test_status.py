@@ -149,6 +149,26 @@ def test_a_change_that_changes_nothing_keeps_the_time():
     assert apply_changes(base, [change], now=NOW).items["skills"].updated_at == T0
 
 
+def test_change_without_origin_sets_state_and_note_and_keeps_origins():
+    base = stored(skills=st("known", "file:a"))
+    change = StatusChange(item_id="skills", state="partial", note="no levels")
+    item = apply_changes(base, [change], now=NOW).items["skills"]
+    assert (item.state, item.note, item.origins) == ("partial", "no levels", ["file:a"])
+    assert item.updated_at == NOW
+
+
+def test_change_without_origin_on_a_new_item_has_no_origins():
+    change = StatusChange(item_id="skills", state="known", note="ignored")
+    item = apply_changes(ChecklistStatus(), [change], now=NOW).items["skills"]
+    assert (item.state, item.note, item.origins) == ("known", None, [])
+
+
+def test_change_without_origin_that_changes_nothing_keeps_the_time():
+    base = stored(skills=st("known", "file:a"))
+    change = StatusChange(item_id="skills", state="known")
+    assert apply_changes(base, [change], now=NOW).items["skills"].updated_at == T0
+
+
 def test_origins_deduplicated_on_load():
     item = ItemStatus(state="known", origins=["file:a", "profile", "file:a"], updated_at=T0)
     assert item.origins == ["file:a", "profile"]

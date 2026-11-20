@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
+from app.intake.round import TOOL_NAMES
 from app.messages import message_text, say, short_error
 from app.providers import structured
 from app.providers.structured import TRANSIENT_ATTEMPTS, TRANSIENT_DELAYS, is_transient
@@ -40,11 +41,11 @@ if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
 
     from app.intake.round import RoundContext
+    from app.tools.context import ToolContext
 
 MAX_TOOL_CALLS = 8
 HISTORY_LIMIT = 40
 ERROR_LIMIT = 1_000  # characters of a validation error fed back to the model
-TOOL_NAMES = ("record_item", "mark_status", "ingest_source", "find_files", "finish")
 
 TurnKind = Literal["reply", "finished", "capped", "failed"]
 
@@ -63,6 +64,18 @@ class TurnOutcome:
     @property
     def failed(self) -> bool:
         return self.kind == "failed"
+
+
+def failed_turn(
+    ctx: ToolContext, user_message: str | None, error: str, *, tool_calls: int = 0
+) -> TurnOutcome:
+    """A failed turn (R11): prints `intake.agent.failed` with `error`; of the turn's
+    messages only the user's (when there is one) stays in the history."""
+    from langchain_core.messages import HumanMessage
+
+    say(ctx.console, ctx.msg("intake.agent.failed", detail=error), "yellow")
+    kept: list[BaseMessage] = [HumanMessage(user_message)] if user_message is not None else []
+    return TurnOutcome("failed", error=error, messages=kept, tool_calls=tool_calls)
 
 
 def build_tools(round_: RoundContext) -> list[BaseTool]:
@@ -169,9 +182,7 @@ def run_turn(
     retried = False
 
     def fail(error: str) -> TurnOutcome:
-        say(ctx.console, ctx.msg("intake.agent.failed", detail=error), "yellow")
-        kept = turn[:1] if user_message is not None else []
-        return TurnOutcome("failed", error=error, messages=kept, tool_calls=calls)
+        return failed_turn(ctx, user_message, error, tool_calls=calls)
 
     def end(kind: TurnKind) -> TurnOutcome:
         text = "\n\n".join(texts)
@@ -213,7 +224,7 @@ def run_turn(
             content: str
             if name not in handlers:
                 invalid = True
-                content = _invalid(f"unknown tool {name!r}; the tools are {', '.join(TOOL_NAMES)}")
+                content = _invalid(f"unknown tool {name!r}; the tools are {', '.join(handlers)}")
             elif parse_error is not None:
                 invalid = True
                 content = _invalid(parse_error)
@@ -247,6 +258,7 @@ __all__ = [
     "bind",
     "build_tools",
     "cut_history",
+    "failed_turn",
     "model_input",
     "run_turn",
 ]

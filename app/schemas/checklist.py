@@ -61,7 +61,8 @@ class StatusChange(BaseModel):
     """What one round learned about an item: its new state, hole note and origin.
 
     Built in code from a source value the reader filled (`partial` with the reader's
-    `gap`, else `known`), a direct answer (`known`, note cleared) or a CV flag.
+    `gap`, else `known`), a direct answer (`known`, note cleared), a CV flag, or a
+    `mark_status` call (no `origin`: the item's origins are kept as they are).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -69,7 +70,7 @@ class StatusChange(BaseModel):
     item_id: ItemId
     state: SetState
     note: str | None = None
-    origin: str = Field(pattern=ORIGIN_PATTERN)
+    origin: str | None = Field(default=None, pattern=ORIGIN_PATTERN)
 
 
 class ItemHole(BaseModel):

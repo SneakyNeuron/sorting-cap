@@ -54,7 +54,7 @@ from app.intake.status import (
     source_origin,
 )
 from app.messages import escape_controls, say
-from app.schemas.checklist import ORIGIN_CONVERSATION, ChecklistStatus, ItemStatus, StatusChange
+from app.schemas.checklist import ORIGIN_CONVERSATION, ChecklistStatus, StatusChange
 from app.schemas.intake import NoteKind, RoundNote
 from app.schemas.intake_agent import (
     FindFilesArgs,
@@ -82,6 +82,16 @@ if TYPE_CHECKING:
     from app.tools.context import ToolContext
 
 VALUE_LIMIT = 1500
+# the in-round tools (T4): name → argument model, in the order they are bound; the
+# handler of each is the `RoundContext` method of the same name
+TOOLS: dict[str, type[BaseModel]] = {
+    "record_item": RecordItemArgs,
+    "mark_status": MarkStatusArgs,
+    "ingest_source": IngestSourceArgs,
+    "find_files": FindFilesArgs,
+    "finish": FinishArgs,
+}
+TOOL_NAMES = tuple(TOOLS)
 CUT_MARK = " […]"
 
 
@@ -132,7 +142,14 @@ class RoundContext:
     # --- views -----------------------------------------------------------------------
 
     def merged(self) -> tuple[ProfileDoc, MergeResult]:
-        return merge(self.data.base, answers=self.data.answers, updates=self.data.updates)
+        """The round's one merge of the direct answers and source values into the base
+        profile: what `write` saves and what the status and context are computed from."""
+        return merge(
+            self.data.base,
+            answers=self.data.answers,
+            updates=self.data.updates,
+            texts=self.ctx.texts,
+        )
 
     def doc(self) -> ProfileDoc:
         """The profile as it would be if the round ended now."""
@@ -158,21 +175,12 @@ class RoundContext:
         applied = set(merged.applied)
         status = self.data.started.model_copy(deep=True)
         for event in self.data.events:
-            if event.kind == "mark":
-                prev = status.items.get(event.item_id)
-                state = event.state or "known"
-                note = event.note if state == "partial" else None
-                if prev is not None and prev.state == state and prev.note == note:
-                    continue
-                status.items[event.item_id] = ItemStatus(
-                    state=state,
-                    note=note,
-                    origins=list(prev.origins) if prev else [],
-                    updated_at=now,
-                )
-                continue
             change: StatusChange | None = None
-            if event.kind == "update" and event.index is not None:
+            if event.kind == "mark":
+                change = StatusChange(
+                    item_id=event.item_id, state=event.state or "known", note=event.note
+                )
+            elif event.kind == "update" and event.index is not None:
                 update = self.data.updates[event.index]
                 if event.index in applied and update.item_id not in self.data.answers:
                     change = StatusChange(
@@ -408,14 +416,9 @@ class RoundContext:
         return FinishResult()
 
     def handlers(self) -> dict[str, tuple[type[BaseModel], Callable[[Any], BaseModel]]]:
-        """Tool name → (argument model, handler), in the order the tools are bound."""
-        return {
-            "record_item": (RecordItemArgs, self.record_item),
-            "mark_status": (MarkStatusArgs, self.mark_status),
-            "ingest_source": (IngestSourceArgs, self.ingest_source),
-            "find_files": (FindFilesArgs, self.find_files),
-            "finish": (FinishArgs, self.finish),
-        }
+        """Tool name → (argument model, handler), in the order the tools are bound; each
+        handler is the method named like its tool."""
+        return {name: (schema, getattr(self, name)) for name, schema in TOOLS.items()}
 
 
 def _display_name(result: SourceResult) -> str:
@@ -428,4 +431,4 @@ def _style(result: SourceResult) -> str | None:
     return {"added": None, "skipped_duplicate": "dim"}.get(result.status, "yellow")
 
 
-__all__ = ["CUT_MARK", "VALUE_LIMIT", "RoundContext", "cut_value"]
+__all__ = ["CUT_MARK", "TOOLS", "TOOL_NAMES", "VALUE_LIMIT", "RoundContext", "cut_value"]

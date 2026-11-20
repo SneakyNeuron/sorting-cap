@@ -113,13 +113,16 @@ def apply_changes(
     status: ChecklistStatus, changes: Iterable[StatusChange], *, now: datetime
 ) -> ChecklistStatus:
     """A copy of `status` with each change applied in order: the state and note set
-    (`known` clears the note), the origin added. An item whose state, note and origins
-    end up as before keeps its `updated_at`."""
+    (`known` clears the note), the origin added (a change without one keeps the
+    origins). An item whose state, note and origins end up as before keeps its
+    `updated_at`."""
     new = status.model_copy(deep=True)
     for change in changes:
         prev = new.items.get(change.item_id)
         note = change.note if change.state == "partial" else None
-        origins = dedupe([*(prev.origins if prev else []), change.origin])
+        origins = list(prev.origins) if prev else []
+        if change.origin is not None:
+            origins = dedupe([*origins, change.origin])
         if (
             prev is not None
             and prev.state == change.state

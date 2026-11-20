@@ -36,12 +36,12 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from app.intake.agent import TurnOutcome, bind, run_turn
+from app.intake.agent import bind, failed_turn, run_turn
 from app.intake.checklist import CV_ITEM, ITEMS
 from app.intake.detect import MAX_SOURCES, detect, split_cap
 from app.intake.extract import CHAR_BUDGET
 from app.intake.filter_file import generate, needs_filter, stored_texts, write_filter
-from app.intake.profile import cv_body, merge, missing_items, profile_path, save_profile
+from app.intake.profile import cv_body, missing_items, profile_path, save_profile
 from app.intake.round import RoundContext
 from app.intake.sources import (
     SourcesError,
@@ -60,7 +60,6 @@ from app.schemas.sources import SourceResult
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
-    from langchain_core.messages import BaseMessage
 
     from app.guard import Scorer
     from app.tools.context import ToolContext
@@ -82,8 +81,9 @@ def is_done(ctx: ToolContext, message: str) -> bool:
 
 
 def route(state: RoundState) -> str:
-    """The one edge function: every node names the node to run next."""
-    return state.get("goto") or "write"
+    """The one edge function: every node names the node to run next (a node that
+    sets no `goto` breaks the graph instead of ending the round)."""
+    return state["goto"]
 
 
 class IntakeNodes:
@@ -159,7 +159,7 @@ class IntakeNodes:
         source reports it consumed back to the next turn; an `OSError` or a manifest
         error inside a tool counts as a failed turn. Ctrl-D at a confirmation inside
         the turn ends and saves the round, keeping what the turn recorded."""
-        from langchain_core.messages import HumanMessage, messages_from_dict, messages_to_dict
+        from langchain_core.messages import messages_from_dict, messages_to_dict
 
         ctx = self.ctx
         round_ = self.round(state)
@@ -172,9 +172,7 @@ class IntakeNodes:
             return {"round": round_.data.model_dump(mode="json"), "goto": "write"}
         except (OSError, SourcesError) as exc:
             detail = exc.text(ctx.texts) if isinstance(exc, SourcesError) else short_error(exc)
-            say(ctx.console, ctx.msg("intake.agent.failed", detail=detail), "yellow")
-            kept: list[BaseMessage] = [HumanMessage(message)] if message is not None else []
-            outcome = TurnOutcome("failed", error=detail, messages=kept)
+            outcome = failed_turn(ctx, message, detail)
         failures = int(state.get("failures", 0))
         if outcome.failed:
             failures += 1
@@ -247,12 +245,7 @@ class IntakeNodes:
         round_ = self.round(state)
         data = round_.data
         base = data.base
-        new_doc, merged = merge(
-            base,
-            answers=data.answers,
-            updates=data.updates,
-            texts=ctx.texts,
-        )
+        new_doc, merged = round_.merged()
         for slug in data.cv_slugs:
             set_cv(ctx.workspace, slug)
         status = round_.status(now_utc())

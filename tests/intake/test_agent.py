@@ -24,6 +24,7 @@ from app.intake.agent import (
     TOOL_NAMES,
     bind,
     cut_history,
+    failed_turn,
     run_turn,
 )
 from app.intake.profile import save_profile
@@ -550,6 +551,15 @@ def test_model_error_is_a_failed_turn_keeping_records(en, cwd):
     assert [m.content for m in outcome.messages] == ["I know Python"]
 
 
+def test_failed_turn_prints_the_error_and_keeps_only_the_user_message(en, cwd):
+    round_, _, buf = setup(en, cwd)
+    outcome = failed_turn(round_.ctx, "I know Python", "disk full", tool_calls=2)
+    assert outcome.failed and outcome.error == "disk full" and outcome.tool_calls == 2
+    assert [(type(m), m.content) for m in outcome.messages] == [(HumanMessage, "I know Python")]
+    assert EN.message("intake.agent.failed", detail="disk full") in buf.getvalue()
+    assert failed_turn(round_.ctx, None, "disk full").messages == []
+
+
 def test_empty_reply_is_a_failed_turn(en, cwd):
     round_, model, _ = setup(en, cwd, "")
     assert turn(round_, model, "hi").error == "empty reply"
@@ -711,6 +721,7 @@ def test_intake_agent_tool_list_is_exactly_the_five_tools(en, cwd):
     turn(round_, model, "hi")
     assert model.bound == [list(TOOL_NAMES)]
     assert TOOL_NAMES == ("record_item", "mark_status", "ingest_source", "find_files", "finish")
+    assert list(round_.handlers()) == list(TOOL_NAMES)
 
 
 def test_tool_schemas_describe_every_field(en, cwd):

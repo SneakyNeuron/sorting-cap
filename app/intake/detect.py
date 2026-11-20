@@ -250,7 +250,7 @@ def _url_key(url: str) -> str:
     return url[:cut].lower() + url[cut:]
 
 
-def _expand(text: str, home: Path) -> str:
+def expand_home(text: str, home: Path) -> str:
     """`~` and `~/…` expanded against `home`, without reading the environment."""
     if text == "~" or text.startswith("~/"):
         return str(home) + text[1:]
@@ -264,7 +264,9 @@ def _name(text: str) -> str:
     return "" if name in (".", "..") else name
 
 
-def _unquote(spec: str) -> str:
+def unquote(spec: str) -> str:
+    """`spec` stripped, without one pair of matching `'` or `"` around it (and the
+    spaces inside them)."""
     spec = spec.strip()
     if len(spec) >= 2 and spec[0] == spec[-1] and spec[0] in "'\"":
         spec = spec[1:-1].strip()
@@ -325,7 +327,7 @@ def _typed(messages: Iterable[str], home: Path) -> _Typed:
                         typed.bare_urls.add(key)
             typed.paths.add(text)
             if text.startswith("~"):
-                typed.paths.add(_expand(text, home))
+                typed.paths.add(expand_home(text, home))
             typed.names.add(_name(text))
     return typed
 
@@ -347,7 +349,7 @@ def allow_ingest(
     `find_files` result needs the user's confirmation.
     Everything else is refused. Reads no file and fetches nothing."""
     home = home if home is not None else Path.home()
-    spec = _unquote(spec)
+    spec = unquote(spec)
     if spec.lower().startswith("www."):
         spec = "https://" + spec
     is_url = spec.lower().startswith(_SCHEMES)
@@ -364,7 +366,7 @@ def allow_ingest(
             if key in typed.bare_urls:
                 return Verdict("allowed", spec, kind, bare_host=True)
         return Verdict("refused", spec, kind, "url_not_typed")
-    expanded = _expand(spec, home)
+    expanded = expand_home(spec, home)
     name = _name(spec)
     if spec in typed.paths or expanded in typed.paths or (name and name in typed.names):
         return Verdict("allowed", spec, kind)

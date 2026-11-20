@@ -74,6 +74,15 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] Tech stack Project structure (T10); Phase 2 R9 left as written, with this spec stated as superseding it
 - [x] Tests: cs/en message and prompt parity; tour and system prompt mention the conversation
 
+## Validation fixes (maintainability, no behaviour change)
+- [x] D14: `mark` events go through `apply_changes` (`StatusChange.origin` optional; no origin keeps the origins)
+- [x] D15: `write` uses `RoundContext.merged()`, which passes the texts; the round has one merge call
+- [x] D16: `failed_turn` in `app/intake/agent.py` builds every failed turn (`run_turn` and the graph's `agent` node)
+- [x] D17: `TOOLS` / `TOOL_NAMES` defined once in `app/intake/round.py`; `handlers()` derives from it
+- [x] D18: `find_files` folder spec uses `unquote` / `expand_home` from `app/intake/detect.py`
+- [x] D19: `route` reads `goto` strictly
+- [x] Tests: `apply_changes` without origin, `failed_turn`, `handlers()` order equals `TOOL_NAMES`, quoted `find_files` folders, `route` without `goto` raises
+
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
 - A message with 12 URLs → the first 10 ingested, the rest reported as skipped for the turn.

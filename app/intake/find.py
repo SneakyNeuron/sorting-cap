@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Literal
 
 from app.guard.quarantine import QUARANTINE_DIR
+from app.intake.detect import expand_home, unquote
 from app.intake.sources import EXTENSIONS, resolve_path
 
 MAX_DEPTH = 3
@@ -61,13 +62,9 @@ def _inside(path: str, folder: str) -> bool:
 
 def _roots(folder: str | None, cwd: Path, home: Path) -> list[Path]:
     if folder is not None:
-        # `~` means `home`, as in the default roots, not the HOME variable
-        spec = folder.strip()
-        if len(spec) >= 2 and spec[0] == spec[-1] and spec[0] in "'\"":
-            spec = spec[1:-1]
-        if spec == "~" or spec.startswith("~/"):
-            spec = str(home) + spec[1:]
-        return [resolve_path(spec, cwd)]
+        # unquoted and `~` expanded as the allow rule does: `~` means `home`, as in
+        # the default roots, not the HOME variable
+        return [resolve_path(expand_home(unquote(folder), home), cwd)]
     return [cwd, *(home / name for name in HOME_FOLDERS), home]
 
 
