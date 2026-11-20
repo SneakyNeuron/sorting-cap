@@ -63,6 +63,7 @@ Goal: each approved job gets a fact-checked motivation letter in the listing's l
 - [ ] Chat can discuss and regenerate a letter with the user's requested changes
 
 ## Later / unscheduled
+- Bare-host local check pinned against DNS rebinding ([backlog](backlog/2026-11-20-bare-host-dns-pinning.md))
 - MCP server exposing the same tool registry
 - Additional UIs (web, mobile) and a public API
 - Multi-language beyond cs/en

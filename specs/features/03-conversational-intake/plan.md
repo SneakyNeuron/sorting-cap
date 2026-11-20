@@ -99,6 +99,15 @@ Roadmap Phase 3, from the backlog request `specs/backlog/2026-11-19-conversation
 - [x] D11: a REPL-level test runs `/add-information` with a scripted model and checks that a typed secret reaches the intake agent but neither `.history`, `ChatAgent.history` nor the workspace; V10 ticked
 - [x] Tests: name match elsewhere confirmed (and declined reads nothing), names in URL tokens refused, exact relative path allowed without asking, a detected dotted-folder path staying a path (rule, handler, graph), `https://` typed not downgraded, `www.`/bare tokens `https://` only, a folder not typed refused without a walk, typed folder and default root searched, dot-directory folders refused (also typed, through `..` and a symlink), every local type over the cap refused for paths and drop-ins without a whole read, headless `--source` too large exiting 1, the REPL history test
 
+## Validation fixes (spec drift)
+- [x] D13 / D21: R18 lists the default roots in the code's order (current directory, `~/Downloads`, `~/Documents`, `~/Desktop`, `~`)
+- [x] D20: Phase 2 backlog item D20 ticked (done in Group 6: `IntakeNodes`, one `route` edge function, `RoundResult.note`)
+- [x] D22: T5 context message lists the item `group` (must / nice)
+- [x] D23: Decisions row "Agent tools" notes `find_files`, added at spec review
+- [x] D24: CHANGELOG says three failed turns in a row
+- [x] README and CHANGELOG describe the batch B/C behaviour: name-only matches and found files confirmed, `find_files` limited to typed folders and default roots and never dot folders, no `https`→`http` downgrade, 20 MiB cap for local `.txt`/`.md`/`.pdf`
+- [x] D9 deferred to [backlog](../../backlog/2026-11-20-bare-host-dns-pinning.md), linked from the roadmap under Later / unscheduled
+
 ## Edge cases
 - A message that is only a path → ingested and reported; the agent gets the report and continues.
 - A message with 12 URLs → the first 10 ingested, the rest reported as skipped for the turn.
